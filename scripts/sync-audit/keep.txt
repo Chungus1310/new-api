@@ -74,3 +74,5 @@ middleware/turnstile-check.go :: func TurnstileCheckAnonymous() gin.HandlerFunc
 router/api-router.go :: middleware.TurnstileCheckAnonymous()
 # the BFF issues legacy access tokens; upstream retires them 30 days after first start
 model/user_access_token.go :: The BFF still issues legacy tokens
+controller/relay.go :: newAPIError.StatusCode == http.StatusBadGateway
+service/upstream_class.go :: "database error:", "undefinedcolumn"

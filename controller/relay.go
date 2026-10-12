@@ -220,6 +220,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if newAPIError.StatusCode == http.StatusPaymentRequired && newAPIError.GetErrorType() != types.ErrorTypeNewAPIError {
 				newAPIError.StatusCode = http.StatusServiceUnavailable
 			}
+			// Cloudflare replaces any 502 body from the origin with its own "Bad
+			// gateway" page, so the customer saw that instead of the reason; a 503
+			// passes through intact.
+			if newAPIError.StatusCode == http.StatusBadGateway {
+				newAPIError.StatusCode = http.StatusServiceUnavailable
+			}
 			// Response already streamed to the client. A JSON body would corrupt the
 			// committed stream, so it stays skipped, but returning nothing ends the
 			// SSE with no [DONE] and no error and every client then reports only that

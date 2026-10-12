@@ -66,6 +66,11 @@ type upstreamRule struct {
 // busy/cooling" and "merchant rejects the request" arrive as 400, which the
 // generic rules read as a malformed request and never fail over.
 var upstreamRules = []upstreamRule{
+	// The upstream's own backend crashed and said so at HTTP 400 (a reseller on 2026-10-12:
+	// "Database error: (...UndefinedColumn) column users.discord_id does not exist"):
+	// nothing about the request is wrong, a sibling serves it, and the SQL stays out
+	// of the customer's reply.
+	{markers: []string{"database error:", "undefinedcolumn"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider's own server had an internal error. Nothing is wrong with your request: retry and another provider will pick it up."},
 	// Reseller, platform-wide protective throttle: every lane on it answers the same 503
 	// for the next seconds, so counting it per lane mass-disables healthy merchants.
 	{markers: []string{"平台正在进行保护性限流"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true, Provider: true}, userMessage: "The provider is throttling every request right now. Nothing is wrong with your request or your balance. Try again in a moment."},
