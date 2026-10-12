@@ -116,7 +116,8 @@ var upstreamRules = []upstreamRule{
 	// Strict schema hosts refuse request shapes other lanes take: non-text
 	// content parts, or echoed reasoning_content. The lane is healthy, only this
 	// request does not fit it, so a sibling serves it and nothing is counted.
-	{markers: []string{"type is invalid, allowed values: ['text']", "extra inputs are not permitted"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider cannot take part of your request (an image, file or reasoning block). Retry and it will go to a provider that accepts it."},
+	// a reseller's cb pool answers a PDF file part with a bare 11101 of this text.
+	{markers: []string{"type is invalid, allowed values: ['text']", "extra inputs are not permitted", "invalid request parameters. please check and retry"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider cannot take part of your request (an image, file or reasoning block). Retry and it will go to a provider that accepts it."},
 
 	// Any host, the route or model is simply not there: a Go mux "404 page not
 	// found" from a relay whose handler is gone, or a gateway naming the model as
