@@ -114,6 +114,36 @@ func DescribeRequestShape(c *gin.Context) map[string]interface{} {
 			shape["image_parts"] = imageParts
 		}
 	}
+
+	// Responses requests carry typed items instead of messages; a converted
+	// request fails on an item or tool type the Chat side cannot express.
+	if input := gjson.GetBytes(body, "input"); input.IsArray() {
+		kinds := make([]string, 0, len(input.Array()))
+		counts := make(map[string]int)
+		input.ForEach(func(_, item gjson.Result) bool {
+			kind := item.Get("type").String()
+			if kind == "" || kind == "message" {
+				kind = "message:" + item.Get("role").String()
+			}
+			kinds = append(kinds, kind)
+			counts[kind]++
+			return true
+		})
+		if len(kinds) > shapeRoleTailLen {
+			shape["items_tail"] = kinds[len(kinds)-shapeRoleTailLen:]
+		} else {
+			shape["items"] = kinds
+		}
+		shape["item_counts"] = counts
+	}
+	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() {
+		toolCounts := make(map[string]int)
+		tools.ForEach(func(_, t gjson.Result) bool {
+			toolCounts[t.Get("type").String()]++
+			return true
+		})
+		shape["tool_types"] = toolCounts
+	}
 	return shape
 }
 
