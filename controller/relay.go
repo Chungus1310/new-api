@@ -181,6 +181,15 @@ func isCommittedSSE(c *gin.Context, relayFormat types.RelayFormat) bool {
 	return strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream")
 }
 
+func jsonKeepaliveFormat(f types.RelayFormat) bool {
+	switch f {
+	case types.RelayFormatOpenAI, types.RelayFormatClaude, types.RelayFormatGemini,
+		types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIResponsesCompaction, types.RelayFormatOpenAIImage:
+		return true
+	}
+	return false
+}
+
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
@@ -247,6 +256,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					if relayFormat == types.RelayFormatClaude {
 						body = gin.H{"type": "error", "error": newAPIError.ToClaudeError()}
 					}
+					c.Status(newAPIError.StatusCode)
 					if data, err := common.Marshal(body); err == nil {
 						_, _ = c.Writer.Write(data)
 					}
@@ -298,6 +308,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
+	}
+
+	// A client waiting on one JSON reply hears nothing while a slow upstream or a
+	// failover chain runs, and the edge cuts it at 125 s.
+	if !relayInfo.ClientWantsStream && jsonKeepaliveFormat(relayFormat) {
+		defer helper.StartJSONKeepalive(c)()
 	}
 
 	defer func() {
