@@ -29,12 +29,14 @@ import {
 } from '@/components/data-table'
 import {
   getAdminPlans,
+  getPublicPlans,
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -98,12 +100,16 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
   const userId = useAuthStore((state) => state.auth.user?.id)
+  const userRole = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
   const { data: showBillingSource = false } = useQuery({
-    queryKey: ['usage-log-billing-source', isAdmin, userId],
+    queryKey: ['usage-log-billing-source', isAdmin, userId, userRole],
     enabled: logCategory === 'common' && userId != null,
     queryFn: async () => {
       if (isAdmin) {
-        const plansResult = await getAdminPlans()
+        // Moderators view all logs but the admin plan list is AdminAuth; the
+        // public catalog holds the same enabled plans.
+        const plansResult =
+          userRole >= ROLE.ADMIN ? await getAdminPlans() : await getPublicPlans()
         return shouldShowBillingSource({
           isAdmin,
           plans: plansResult.success ? plansResult.data : undefined,
