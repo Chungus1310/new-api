@@ -12,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/pkg/aimark"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -157,7 +156,7 @@ func cfImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Resp
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(http.StatusOK)
-	_, _ = c.Writer.Write(aimark.RewriteBody(jsonResponse))
+	_, _ = c.Writer.Write(service.MarkGeneratedMedia(c, jsonResponse))
 
 	usage := &dto.Usage{PromptTokens: info.GetEstimatePromptTokens()}
 	return nil, usage

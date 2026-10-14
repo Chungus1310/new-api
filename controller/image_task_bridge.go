@@ -18,6 +18,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -229,7 +230,7 @@ func writeImageTaskSuccess(c *gin.Context, task *model.Task, requestedModel, res
 				content.WriteString("\n")
 			}
 			content.WriteString("![image](")
-			content.WriteString(aimark.RewriteLink(aimark.RewriteString(url)))
+			content.WriteString(service.MarkGeneratedMediaLink(c, service.MarkGeneratedMediaString(c, url)))
 			content.WriteString(")")
 		}
 		c.JSON(http.StatusOK, dto.OpenAITextResponse{
@@ -261,7 +262,7 @@ func writeImageTaskSuccess(c *gin.Context, task *model.Task, requestedModel, res
 			// image; hand back the URL rather than failing the request.
 			logger.LogDebug(c, "image task returned a url while b64_json was requested")
 		}
-		data = append(data, dto.ImageData{Url: aimark.RewriteLink(url)})
+		data = append(data, dto.ImageData{Url: service.MarkGeneratedMediaLink(c, url)})
 	}
 	c.JSON(http.StatusOK, dto.ImageResponse{Created: common.GetTimestamp(), Data: data})
 	return nil

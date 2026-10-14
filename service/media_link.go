@@ -12,8 +12,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/aimark"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -29,6 +32,30 @@ var (
 
 func init() {
 	aimark.LinkRewriter = BuildMediaLinkURL
+}
+
+// wrapMediaLinks is false for the unorouter BFF: it downloads every generated image
+// itself, marks it, and refuses to fetch from the gateway host.
+func wrapMediaLinks(c *gin.Context) bool {
+	return c == nil || !common.GetContextKeyBool(c, constant.ContextKeyBFFRequest)
+}
+
+// MarkGeneratedMedia marks the generated media in a response body or stream chunk.
+func MarkGeneratedMedia(c *gin.Context, body []byte) []byte {
+	return aimark.RewriteBody(body, wrapMediaLinks(c))
+}
+
+// MarkGeneratedMediaString is MarkGeneratedMedia for string payloads.
+func MarkGeneratedMediaString(c *gin.Context, s string) string {
+	return aimark.RewriteString(s, wrapMediaLinks(c))
+}
+
+// MarkGeneratedMediaLink wraps one image link in a signed media link.
+func MarkGeneratedMediaLink(c *gin.Context, rawURL string) string {
+	if !wrapMediaLinks(c) {
+		return rawURL
+	}
+	return aimark.RewriteLink(rawURL)
 }
 
 func signMediaLink(payload []byte) []byte {

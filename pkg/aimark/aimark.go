@@ -211,13 +211,13 @@ var (
 )
 
 // RewriteBody marks every image embedded in a response body or stream chunk, either
-// as a data URL or as a base64 JSON field, and hands image links to LinkRewriter.
-// Bodies without such content are returned as is without scanning further.
-func RewriteBody(body []byte) []byte {
+// as a data URL or as a base64 JSON field, and with links set hands image links to
+// LinkRewriter. Bodies without such content are returned as is without scanning further.
+func RewriteBody(body []byte, links bool) []byte {
 	if containsAny(body, triggers) {
 		body = rewriteEmbedded(body)
 	}
-	if LinkRewriter != nil && containsAny(body, linkTriggers) {
+	if links && LinkRewriter != nil && containsAny(body, linkTriggers) {
 		body = rewriteLinks(body)
 	}
 	return body
@@ -245,16 +245,16 @@ func rewriteEmbedded(body []byte) []byte {
 }
 
 // RewriteString is RewriteBody for string payloads.
-func RewriteString(s string) string {
+func RewriteString(s string, links bool) string {
 	for _, t := range triggers {
 		if strings.Contains(s, string(t)) {
-			return string(RewriteBody([]byte(s)))
+			return string(RewriteBody([]byte(s), links))
 		}
 	}
-	if LinkRewriter != nil {
+	if links && LinkRewriter != nil {
 		for _, t := range linkTriggers {
 			if strings.Contains(s, string(t)) {
-				return string(RewriteBody([]byte(s)))
+				return string(RewriteBody([]byte(s), links))
 			}
 		}
 	}

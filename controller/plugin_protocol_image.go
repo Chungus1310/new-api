@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/aimark"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -168,7 +167,7 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 		c.JSON(http.StatusOK, response)
 		return
 	}
-	c.Data(http.StatusOK, "application/json", aimark.RewriteBody(body))
+	c.Data(http.StatusOK, "application/json", service.MarkGeneratedMedia(c, body))
 }
 
 // waitTaskPluginImageTask polls an asynchronous image task inside the client
