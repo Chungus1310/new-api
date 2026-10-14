@@ -112,6 +112,16 @@ var upstreamRules = []upstreamRule{
 	// or 520, so no status default covers every form): a sibling serves it and a
 	// lane doing it all day is dead.
 	{markers: []string{"协议能力与本次请求不匹配", "上游服务、网络链路或代理返回异常响应"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider could not handle this request. Retry and it will go to a different one."},
+	// The platform already paused a merchant that kept failing this model, or every
+	// candidate it could route to failed: the lane is cooling, not dead.
+	{markers: []string{"持续失败，平台已暂停", "智能路由候选均请求失败", "所有回退分组均不可用"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider paused this route after repeated failures. Retry and another provider will pick it up."},
+	{markers: []string{"负载已饱和", "该模型当前访问量过大", "请求暂时未能完成，请稍后重试"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "The provider is overloaded right now. Retry and another provider will pick it up."},
+	{markers: []string{"智能路由流式响应中途失败"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure}, userMessage: "The provider dropped the response partway through. Please send the request again."},
+	{markers: []string{"请求参数不正确，请检查请求体", "请求未能完成，请检查请求参数", "限制小数点"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider rejected one of the request's parameters. Retry and it will go to a provider that accepts it."},
+	{markers: []string{"当前会话被上游安全策略封锁"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "The provider's safety policy blocked this conversation. Retry to reach another provider, or start a new chat."},
+	{markers: []string{"提示词或参考图此前已被上游内容审核拒绝", "提示词安全审计拒绝了本次请求"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
+	{markers: []string{"免费请求额度已用完", "额度已用尽"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
+	{markers: []string{"api key 无效", "上游认证失败、密钥无效或账号被限制"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's credentials stopped working. It has left rotation, so please retry."},
 
 	// Strict schema hosts refuse request shapes other lanes take: non-text
 	// content parts, or echoed reasoning_content. The lane is healthy, only this

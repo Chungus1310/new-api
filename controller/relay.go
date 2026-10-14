@@ -1237,7 +1237,14 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		if promptTokens <= 0 {
 			promptTokens = tokenkit.Count(modelName, relaycommon.ExtractPromptText(c))
 		}
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, promptTokens, other)
+		// Users read their own error logs, so the row says what the client was told;
+		// the upstream's own wording stays with admins for triage.
+		content := err.MaskSensitiveErrorWithStatusCode()
+		if userMessage, ok := service.UpstreamUserMessage(err); ok {
+			other.SetAdmin("upstream_message", content)
+			content = fmt.Sprintf("status_code=%d, %s", err.StatusCode, userMessage)
+		}
+		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, content, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, promptTokens, other)
 	}
 }
 
