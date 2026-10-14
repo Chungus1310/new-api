@@ -422,7 +422,7 @@ func GeminiChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *
 	}
 
 	// The relay closed the stream before Gemini's terminal chunk (finishReason and
-	// usage): only the thinking reached the client (one Vertex, 2026-10-07), and it
+	// usage): only the thinking reached the client (a Vertex relay, 2026-10-07), and it
 	// was logged a success while the client saw no finish reason. Bytes are committed,
 	// so no failover; end with an error the client can show, unbilled.
 	if sawOutput && info.RelayFormat != types.RelayFormatGemini && info.StreamStatus != nil &&

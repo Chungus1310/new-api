@@ -210,12 +210,12 @@ func TestRecordChannelFailureRate(t *testing.T) {
 			require.False(t, RecordChannelFailure(ch, true), "soft failure %d of 19, below the absolute floor -> keep", i)
 		}
 		// ...but a lane that only ever fails is still dead, and the rate gate says so
-		// once the absolute floor is reached. This is the 13080 case: 5,548 failures,
+		// once the absolute floor is reached. One lane had 5,548 failures,
 		// zero successes, enabled the whole time.
 		assert.True(t, RecordChannelFailure(ch, true), "20th soft failure at 100% -> disable")
 	})
 
-	// The regression: r1-3304 served a paying user at 59% failure for hours because
+	// The regression: one lane served a paying user at 59% failure for hours because
 	// soft failures were never counted at all, so no gate could ever see them.
 	t.Run("soft failures still reach the rate gate", func(t *testing.T) {
 		reset()

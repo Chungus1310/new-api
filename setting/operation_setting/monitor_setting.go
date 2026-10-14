@@ -38,7 +38,7 @@ type MonitorSetting struct {
 	ChannelFailureAbsoluteFloor int     `json:"channel_failure_absolute_floor"`
 	// A lane that fails half its requests at a few requests an hour never puts
 	// enough failures into one ten minute window, so the fast gate above is blind
-	// to it by construction (one gemini-2.5-pro: 64 failures a day, 3 an hour).
+	// to it by construction (one gemini-2.5-pro lane: 64 failures a day, 3 an hour).
 	// The slow window sums hourly buckets over ChannelSlowWindowHours and disables
 	// on the same rate once ChannelSlowFailureAbsoluteFloor failures are in it.
 	// Threshold 0 falls back to ChannelFailureRateThreshold; hours 0 disables it.
@@ -47,7 +47,7 @@ type MonitorSetting struct {
 	ChannelSlowFailureRateThreshold float64 `json:"channel_slow_failure_rate_threshold"`
 	// A truncation is an upstream failure that arrived after the client had already
 	// received content: the answer is cut off and no retry can hide it. Measured on
-	// reseller lane 4056, the failure rate is a function of how long the request runs:
+	// one reseller lane, the failure rate is a function of how long the request runs:
 	// 1.0% under 60s, 79.6% between 120s and 180s. The ordinary failure gate cannot
 	// see that, because the lane still reads 94.8% healthy overall. Counted and
 	// gated separately, over requests that ran at least

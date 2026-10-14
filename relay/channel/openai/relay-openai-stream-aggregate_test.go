@@ -183,7 +183,7 @@ data: [DONE]
 	assert.Equal(t, 22, out.Usage.CompletionTokens)
 }
 
-// reseller truncating the connection is the exact failure this feature exists to
+// A reseller truncating the connection is the exact failure this feature exists to
 // survive, so a stream that stops without [DONE] must still return what it got.
 func TestAggregateReturnsPartialContentWhenStreamEndsWithoutDone(t *testing.T) {
 	sse := `data: {"id":"chatcmpl-8","choices":[{"index":0,"delta":{"role":"assistant","content":"partial"}}]}

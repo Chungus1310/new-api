@@ -474,7 +474,7 @@ func buildStreamErrorAPIError(errChunk string, streamingStarted bool) *types.New
 // A reseller that cuts long replies at its own deadline ends the stream with a
 // synthetic chunk of this id: finish_reason "stop" and a flat 1000/1000 usage
 // stub. Read as a real ending, a half answer passed as complete and billed the
-// stub (r1-merchant at ~297s, 2026-09-28).
+// stub (one merchant at ~297s, 2026-09-28).
 const upstreamTimeoutGuardChunkID = "chatcmpl-timeout-guard"
 
 func isUpstreamTimeoutGuard(data string) bool {

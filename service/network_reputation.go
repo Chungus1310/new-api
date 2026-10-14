@@ -101,7 +101,7 @@ func refreshNetworkReputation() {
 	domainIdentities := make(map[string]int)
 	// Sign-ups per uncommon email domain per UTC day, identity or not: a farm that
 	// owns a Google Workspace domain mints accounts that all count as verified
-	// (farm.example, 39 in eight hours on 2026-10-06). Over the 90 days to 2026-10-07
+	// (39 in eight hours on 2026-10-06). Over the 90 days to 2026-10-07
 	// every domain reaching 10 in a day had no payer once the public providers on
 	// either allowlist were set aside.
 	emailDomainAllow := emailDomainBurstAllowlist(domainAllow)

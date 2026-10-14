@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 // CountMode says what an upstream fault contributes to the channel's failure
@@ -95,7 +96,7 @@ var upstreamRules = []upstreamRule{
 	// "您已超过输入 tokens 配额" is the same state metered differently: it fires on
 	// prompts as small as 2 tokens, so it is the merchant's allowance, not this
 	// request's size. Pulled on the first answer, and the whole host cools: on
-	// 2026-09-25 our own reseller balance ran out and a counted rule kept every reseller lane in
+	// 2026-09-25 our own balance at a reseller ran out and a counted rule kept every lane on it in
 	// rotation for five hours while each request walked several of them. A lane that
 	// only flapped comes back through the scheduled retest.
 	{markers: []string{"可用额度不足", "您已超过输入 tokens 配额"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true, Provider: true}, userMessage: "This provider ran out of credit on their side. That is on us, not you: retry and the request goes to another provider."},
@@ -133,13 +134,13 @@ var upstreamRules = []upstreamRule{
 	// Strict schema hosts refuse request shapes other lanes take: non-text
 	// content parts, or echoed reasoning_content. The lane is healthy, only this
 	// request does not fit it, so a sibling serves it and nothing is counted.
-	// a reseller's cb pool answers a PDF file part with a bare 11101 of this text.
+	// One reseller pool answers a PDF file part with a bare 11101 of this text.
 	{markers: []string{"type is invalid, allowed values: ['text']", "extra inputs are not permitted", "invalid request parameters. please check and retry"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider cannot take part of your request (an image, file or reasoning block). Retry and it will go to a provider that accepts it."},
 
 	// Any host, the route or model is simply not there: a Go mux "404 page not
 	// found" from a relay whose handler is gone, or a gateway naming the model as
 	// nonexistent. Deterministic for this lane, and the failure-RATE guard never
-	// trips on it while the lane still serves other requests: one answered it 106
+	// trips on it while the lane still serves other requests: one free lane answered it 106
 	// times against 700 successes on 2026-09-21 and stayed enabled all day. The
 	// disabled-channel retest brings the lane back once the route answers again.
 	{markers: []string{"404 page not found", "please use an exact model id"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider no longer serves that model. It has left rotation, so please retry."},
@@ -148,21 +149,21 @@ var upstreamRules = []upstreamRule{
 	// unknown error it counted nothing: three lanes failed 18,600 requests in ten
 	// hours on 2026-09-21 and stayed enabled.
 	{markers: []string{"reached its end of life", "has been retired", "has been deprecated and is no longer", "has been deprecated. please use one of the available models"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider has retired that model. It has left rotation, so please retry."},
-	// Google's answer to a deleted or revoked key comes as a 400, so nothing counted it: one passed
-	// it to users 5,142 times in 24h to 2026-09-28 and its robotics lane stayed enabled.
+	// Google's answer to a deleted or revoked key comes as a 400, so nothing counted it: one lane passed
+	// it to users 5,142 times in 24h to 2026-09-28 and that lane stayed enabled.
 	{markers: []string{"api key not found. please pass a valid api key", "api key not valid. please pass a valid api key"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's credentials stopped working. It has left rotation, so please retry."},
 	// A reseller refusing a model outright answers 403, which neither failed over nor counted: both
-	// one gpt-6-astra lanes returned it 253 times in 3h on 2026-09-30 while five other lanes served.
+	// gpt-6-astra lanes of one reseller returned it 253 times in 3h on 2026-09-30 while five other lanes served.
 	{markers: []string{"拒绝，服务暂时不可用，请联系管理员"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider stopped serving that model. It has left rotation, so please retry."},
 	// xAI refuses a stale Grok CLI identity with 426 until the relay updates it: two relays'
 	// grok lanes answered only this from 2026-09-30 20:39, 0 successes, and stayed enabled.
 	{markers: []string{"grok cli version"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's upstream client is out of date. It has left rotation, so please retry."},
 	// A free allowance spent until its daily or monthly reset fails every request until then, and a
-	// sole lane is never pulled on rate: one mercury stayed listed through 367 of these in two days.
+	// sole lane is never pulled on rate: one sole lane stayed listed through 367 of these in two days.
 	{markers: []string{"free tier limit reached", "too many tokens per day", "daily free quota for the model", "today's free-model token quota", "free-models-per-day", "api calls / month", "reached your monthly usage limit"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
 	// A demo site fronted by our proxy shards caps the messages per conversation:
 	// the customer's long chat is refused, the lane is fine. Its 502 read as a
-	// lane failure disabled ten proxy lanes on 2026-09-21 at half their traffic.
+	// lane failure disabled ten of those lanes on 2026-09-21 at half their traffic.
 	{markers: []string{"demo is limited to"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider caps the number of messages in one conversation. Start a new conversation, or retry and another provider will take it."},
 	// The same demo caps the LAST user message at 6000 characters (the system
 	// prompt and earlier turns are not counted), so it is not a context ceiling:
@@ -171,48 +172,49 @@ var upstreamRules = []upstreamRule{
 	{markers: []string{"prompt too long (max "}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider limits the length of a single message. Shorten your last message, or retry and another provider will take it."},
 	// One upstream's per minute cap on one model (3021) is one budget for every caller
 	// of the account behind a lane, and it refills each minute. On the doubling
-	// Cooldown all eight proxy glm-5.3 lanes sat out ten minutes at a time and the
+	// Cooldown all eight of its glm-5.3 lanes sat out ten minutes at a time and the
 	// model left the catalog (2026-09-21); one window per hit follows the cap.
 	{markers: []string{"inference request per min rate reached"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Shared: true, Window: time.Minute}, userMessage: "This model is at its provider's per minute limit right now. Nothing is used up on your side. Try again in a minute."},
-	// Per key and per address caps that refill each minute: a broker's free
-	// tier (6 RPM), a router's free plan (5 RPM) and guest-chat (100 a minute per exit,
-	// relayed by our proxy), and a reseller free keys (one request in flight, 7s
-	// apart; its concurrency cap is a 403). The generic rate limit rule below would double the
+	// Per key and per address caps that refill each minute: free tiers metered per key
+	// (5 to 6 RPM) or per address (100 a minute per exit, relayed by our proxy), and
+	// free keys allowed one request in flight 7s apart (that cap is a 403). The
+	// markers that name an upstream come from MINUTE_WINDOW_MARKERS. The generic rate limit rule below would double the
 	// sit out up to ten minutes.
-	{markers: []string{"free tier rate limit (", "account per-minute rate limit exceeded (", "guest-chat 429", "[reseller] rate limit exceeded for your tier", "[reseller] too many concurrent requests"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: time.Minute}, userMessage: "This model is at its provider's per minute limit right now. Nothing is used up on your side. Try again in a minute."},
-	// a reseller also caps each free key per hour across all its free ids (a 403);
-	// on 2026-09-26 it disabled six of eight one lanes within minutes of the first sync.
-	// one upstream admits signed-in and paid accounts first; an anonymous key at peak gets
+	{markers: append([]string{"free tier rate limit (", "account per-minute rate limit exceeded ("}, operation_setting.MinuteWindowMarkers...), class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: time.Minute}, userMessage: "This model is at its provider's per minute limit right now. Nothing is used up on your side. Try again in a minute."},
+	// One upstream admits signed-in and paid accounts first; an anonymous key at peak gets
 	// this for minutes at a time, and its text carried its signup link and model
 	// list straight to our users (2026-10-04, glm-5.3-flash:free).
 	{markers: []string{"at concurrency capacity. signed-in and paid accounts are admitted first"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 5 * time.Minute}, userMessage: "This model's provider is full right now. Nothing is used up on your side. Retry and another provider will take it, or try again in a few minutes."},
-	{markers: []string{"[reseller] hourly rate limit exceeded for free models"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 15 * time.Minute}, userMessage: "This model is at its provider's hourly limit right now. Nothing is used up on your side. Retry and another provider will take it."},
+	// A free key capped per hour across all its free ids (a 403) disabled six of
+	// eight lanes within minutes of their first sync (2026-09-26). Markers from
+	// QUARTER_HOUR_WINDOW_MARKERS.
+	{markers: operation_setting.QuarterHourWindowMarkers, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 15 * time.Minute}, userMessage: "This model is at its provider's hourly limit right now. Nothing is used up on your side. Retry and another provider will take it."},
 	// A free lane whose upstream keeps answering that free capacity is limited
-	// and paid credits lift it: a 429 in words, but one lane (one hy3) failed 583
+	// and paid credits lift it: a 429 in words, but one lane failed 583
 	// requests against 15 successes all day, so it counts toward the guard.
 	{markers: []string{"add credits for higher, more stable limits"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "This model is at capacity right now. Nothing is used up on your side. Try again in a few moments."},
 	// Any host, the name did not resolve: nothing this lane serves can be reached
 	// until the record is back, so it leaves rotation at the first failure instead
-	// of waiting for the rate guard. marketplace.example rotates its CNAME between backends
+	// of waiting for the rate guard. a reseller host rotates its CNAME between backends
 	// and landed on one with no record on 2026-09-16: 2,000 failures in seven
 	// minutes on lanes that stayed enabled throughout. Only the lane that saw the
 	// error is pulled, and the disabled-channel retest brings it back on its own.
 	{markers: []string{"no such host", "server misbehaving"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "We could not reach that provider at all. It has left rotation, so please retry."},
 	// Any host, the TLS handshake could not be trusted: nothing may be sent through
 	// it, and the answer is never to skip verification (an untrusted certificate and
-	// an interception look identical from here). marketplace.example began serving a cert from
+	// an interception look identical from here). a reseller host began serving a cert from
 	// a private "Cyber Inc." CA at 21:23 UTC on 2026-09-15 and every lane on it
 	// failed. Same treatment as an unresolvable name: the lane leaves rotation now
 	// and the retest brings it back when the chain verifies again.
 	{markers: []string{"certificate signed by unknown authority", "failed to verify certificate", "certificate has expired", "certificate is not valid for any names"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "We could not open a trusted connection to that provider, so your request was never sent. It has left rotation, please retry."},
 	// Any host, the far end aborted the handshake itself (internal error, handshake
-	// failure, unrecognized name): reseller emitted these alongside the bad certificate
+	// failure, unrecognized name): that host emitted these alongside the bad certificate
 	// while it was down for maintenance. Nothing can be sent over a handshake that
 	// never completed, so the lane leaves rotation and the retest returns it.
 	{markers: []string{"remote error: tls:"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "The provider dropped the connection before it was established. It has left rotation, please retry."},
 
 	// Our own lane proxies: the shard's slots are full or the
-	// upstream handed back empty frames, which is what guest-site.example's guest throttle
+	// upstream handed back empty frames, which is what a web guest throttle
 	// looks like from inside the tunnel. A capacity state of the shard, not a
 	// broken lane: 108 of these reached users in five minutes on 2026-09-21 while
 	// the generic 503 default counted every one and pulled the lane.
@@ -220,8 +222,8 @@ var upstreamRules = []upstreamRule{
 	// Any host, rate limits and capacity: fail over, count nothing. AI Horde alone
 	// produced 190k of these in a week; each one disabled a lane the probe
 	// re-enabled five minutes later.
-	// guest-site.example guest throttle. Exempting it from disable (2026-09-21) left every
-	// guest lane enabled at 0 to 2% pass on 2026-09-23, each failure holding the
+	// A web guest throttle. Exempting it from disable (2026-09-21) left every
+	// lane on it enabled at 0 to 2% pass on 2026-09-23, each failure holding the
 	// caller for the whole first byte deadline; the scheduled test re-enables a
 	// lane once the throttle lifts.
 	{markers: []string{"请求过于频繁", "当前访客资源不足"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This model is rate limited right now. Nothing is used up on your side. Try again in a few moments."},

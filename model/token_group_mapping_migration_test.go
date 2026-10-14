@@ -29,8 +29,8 @@ func testTokenGroupMappingMigration(t *testing.T, db *gorm.DB) {
 	}{
 		{
 			name: "legacy array becomes entry shape",
-			in:   `{"glm-5.3":["r1-x","p2-y"]}`,
-			want: `{"glm-5.3":{"groups":["r1-x","p2-y"]}}`,
+			in:   `{"glm-5.3":["p1-x","p2-y"]}`,
+			want: `{"glm-5.3":{"groups":["p1-x","p2-y"]}}`,
 		},
 		{
 			name: "legacy empty array keeps the model key",
@@ -39,8 +39,8 @@ func testTokenGroupMappingMigration(t *testing.T, db *gorm.DB) {
 		},
 		{
 			name: "already migrated row is untouched",
-			in:   `{"glm-5.3":{"groups":["r1-x"],"min":0.02,"max":0.05}}`,
-			want: `{"glm-5.3":{"groups":["r1-x"],"min":0.02,"max":0.05}}`,
+			in:   `{"glm-5.3":{"groups":["p1-x"],"min":0.02,"max":0.05}}`,
+			want: `{"glm-5.3":{"groups":["p1-x"],"min":0.02,"max":0.05}}`,
 		},
 		{
 			name: "unparseable payload is preserved rather than destroyed",

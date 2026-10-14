@@ -21,7 +21,7 @@ const paidProbeWindow = 10 * time.Minute
 // models reach PaidProbeMaxDistinctModels or the refusals reach PaidProbeMaxRefusals.
 // Measured over the 7 days to 2026-10-07: the farm registered on 2026-09-06 swept
 // 35 to 39 paid models per 10 minutes while ordinary empty wallets peaked at 2
-// (p90 8); the farm.example farm instead sent about 2,300 refusals per 10 minutes on
+// (p90 8); a Workspace domain farm instead sent about 2,300 refusals per 10 minutes on
 // one model, and all 67 accounts above 100 refusals had never spent. Redis only.
 func TrackPaidProbe(userId int, modelName string) {
 	setting := operation_setting.GetQuotaSetting()

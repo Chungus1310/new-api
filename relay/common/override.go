@@ -1066,7 +1066,7 @@ func applyOperations(jsonData []byte, operations []ParamOperation, conditionCont
 				auditRecorder.recordOperation("trim_space", path, "", "", nil)
 			}
 		case "round":
-			// Some upstreams reject a number for its precision, not its range: one upstream
+			// Some upstreams reject a number for its precision, not its range: one
 			// answers 400 to temperature 0.855 (two decimals at most). value is the
 			// number of decimals to keep. An absent or non-numeric path is left alone.
 			decimals, ok := op.Value.(float64)

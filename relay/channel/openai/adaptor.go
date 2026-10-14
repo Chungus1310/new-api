@@ -191,7 +191,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 }
 
 // keylessChannel is the sync's placeholder for lanes that take no credential.
-// keyless.example began validating every Bearer it receives on 2026-09-21 13:45 UTC
+// A keyless upstream began validating every Bearer it receives on 2026-09-21 13:45 UTC
 // and answered "Your authentication token is invalid" to the placeholder while
 // a request with no header still went through, so the header is left out.
 func keylessChannel(apiKey string) bool {

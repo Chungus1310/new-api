@@ -184,7 +184,7 @@ func Distribute() func(c *gin.Context) {
 					// pin selected the first channel correctly but a forced retry
 					// (e.g. a per-upstream moderation 400 that fails over) fell back
 					// to the token's auto group and served an out-of-pin channel
-					// (pinned to one relay, moderation-rejected, retried onto one). Mirror
+					// (pinned to one relay, rejected, retried onto another). Mirror
 					// the per-model GroupMapping pin: scope BOTH keys to the header.
 					common.SetContextKey(c, constant.ContextKeyTokenGroup, usingGroup)
 					common.SetContextKey(c, constant.ContextKeyTokenGroupMappingApplied, true)

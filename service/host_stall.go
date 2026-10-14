@@ -13,7 +13,7 @@ import (
 
 // A marketplace host stalls as a whole: for ten to twenty minutes most of its
 // lanes hit the first byte deadline together, then all of them are clean again
-// (reseller, 2026-10-01: 11 of 11 lanes at once, three quarters of all its timeouts
+// (one marketplace, 2026-10-01: 11 of 11 lanes at once, three quarters of all its timeouts
 // inside such bursts). Failing over between its lanes then only stacks 90 s
 // waits, so a host with enough different lanes stalled in the window is passed
 // over while another provider can serve.

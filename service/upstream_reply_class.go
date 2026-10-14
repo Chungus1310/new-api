@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 type replyRule struct {
@@ -23,13 +24,13 @@ type replyRule struct {
 // that happens to quote one of these sentences is the model talking.
 var replyRules = []replyRule{
 	// The upstream account behind the lane is banned and says so as the answer
-	// (one qwen3.6-plus:free, 2026-10-01).
+	// (a free lane, 2026-10-01).
 	{markers: []string{"flagged as having abnormal activity"}},
 	// A vendor terminal assistant resold as a chat model: it
 	// refuses anything off its own topic and names itself when asked
-	// (reseller merchant 4224 deepseek-v4-pro-0813, 2026-10-01).
-	{markers: []string{"vendor-terminal", "如果您有服务器运维、云资源管理"}},
-	// A reseller's own failure text served as a 200 answer (reseller merchant 3836
+	// (one merchant's deepseek-v4-pro, 2026-10-01).
+	{markers: append([]string{"如果您有服务器运维、云资源管理"}, operation_setting.CannedReplyMarkers...)},
+	// A reseller's own failure text served as a 200 answer (one merchant's
 	// glm-5.3, a third of its replies on 2026-10-03).
 	{markers: []string{"please retry later, or reduce the request parameters/content"}},
 }

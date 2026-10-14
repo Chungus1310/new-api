@@ -622,7 +622,7 @@ func RecordChannelFailure(channelId int, soft bool) bool {
 // reached the client. Nothing can hide it: the retry loop cannot re-answer a
 // request the client is already reading, so the customer sees a cut-off response.
 // It is counted against LONG requests only, because the failure mode is
-// duration-dependent: on reseller lane 4056 the rate was 1.0% under 60s and 79.6%
+// duration-dependent: on one reseller lane the rate was 1.0% under 60s and 79.6%
 // between 120s and 180s, which a whole-traffic rate averages into invisibility.
 //
 // Counting always runs so the rate is observable; only the disable is gated, so

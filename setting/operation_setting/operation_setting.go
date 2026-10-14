@@ -21,6 +21,13 @@ func init() {
 // a moderation verdict, which is how it behaved before the markers existed.
 var SharedFilterModerationMarkers = parseMarkerList(os.Getenv("SHARED_FILTER_MODERATION_MARKERS"))
 
+// Upstream texts that name the upstream itself, kept out of this public repo the
+// same way: extra markers for the one minute and fifteen minute window rules, and
+// for canned 200 replies.
+var MinuteWindowMarkers = parseMarkerList(os.Getenv("MINUTE_WINDOW_MARKERS"))
+var QuarterHourWindowMarkers = parseMarkerList(os.Getenv("QUARTER_HOUR_WINDOW_MARKERS"))
+var CannedReplyMarkers = parseMarkerList(os.Getenv("CANNED_REPLY_MARKERS"))
+
 func parseMarkerList(raw string) []string {
 	var out []string
 	for _, part := range strings.Split(raw, ",") {
@@ -85,7 +92,7 @@ var ChannelFaultKeywords = []string{
 	"free-model daily limit reached",
 	// A reseller running this fork's own daily free-token budget: the message
 	// names today's quota and the daily reset. Read as a bare 429 it only cooled
-	// the lane ten minutes, so six one lanes failed 3,800 user requests in a day.
+	// the lane ten minutes, so six lanes of one reseller failed 3,800 user requests in a day.
 	"free-model token quota",
 	// OpenRouter's daily free-model allowance, both the plain and high-balance
 	// variants ("Rate limit exceeded: free-models-per-day[-high-balance]").
@@ -103,7 +110,7 @@ var ChannelFaultKeywords = []string{
 	"consumer 'api_key",
 	// Groq's daily token allowance ("Rate limit reached ... on tokens per day
 	// (TPD)"): spent for the day, so read as a bare 429 it only cooled the lane
-	// and one failed 1,700 requests against 840 successes on 2026-09-21.
+	// and one lane failed 1,700 requests against 840 successes on 2026-09-21.
 	"tokens per day (tpd)",
 	// Inception answers 402 "Free tier limit reached. Please upgrade to a paid
 	// plan": the allowance is gone, nothing about it clears.

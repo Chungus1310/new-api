@@ -214,13 +214,13 @@ const (
 	flapBackoffMinDisables     = 3
 	flapBackoffBaseSeconds     = 30
 	// Cap the flap hold to ~one probe cycle (tests run every 1min): a flaky-but-
-	// recovering free lane (web reverse, captcha-pool latency) that passes its
+	// recovering free lane (a web reverse, captcha-pool latency) that passes its
 	// probe should come back on the very next cycle, not stay quarantined. The hold
 	// only skips a single immediate re-enable to damp thrash; it never locks a
 	// healthy-again channel out.
 	flapBackoffCapSeconds = 60
 	// A paid lane whose models another enabled channel also serves costs nothing
-	// to hold, and letting it back every cycle is what the cap above did to reseller:
+	// to hold, and letting it back every cycle is what the cap above did to one marketplace:
 	// 817 auto-disables and 796 re-enables across 114 lanes in one day, median
 	// 144s between the two, one kimi-k3 lane flipping 68 times. Each return fed
 	// the lane a fresh burst of traffic it could not serve.

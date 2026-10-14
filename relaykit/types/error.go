@@ -555,7 +555,7 @@ var transientUpstream400Markers = []string{
 	"try again",
 	"retry later",
 	"upstream provider returned an error",
-	// example reseller masking its upstream's failure as a 400
+	// A reseller masking its upstream's failure as a 400
 	"upstream request failed",
 	// A new-api-based reseller intermittently drops the model field server-side
 	// and blames the request. The identical body succeeds on the same channel

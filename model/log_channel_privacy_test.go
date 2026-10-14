@@ -15,7 +15,7 @@ import (
 func TestFormatUserLogsStripsChannelName(t *testing.T) {
 	logs := []*Log{
 		{Id: 1, ChannelId: 7322, ChannelName: "p1-mimo-v2.5", Other: `{"admin_info":{"x":1},"audit_info":{"y":2},"frt":123}`},
-		{Id: 2, ChannelId: 8169, ChannelName: "p2-pool-fp8-minimax-m3"},
+		{Id: 2, ChannelId: 8169, ChannelName: "p2-minimax-m3"},
 	}
 
 	formatUserLogs(logs, 0)
