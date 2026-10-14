@@ -78,7 +78,8 @@ type ChannelSettings struct {
 	AutoTestIntervalMaxMinutes int `json:"auto_test_interval_max_minutes,omitempty"`
 	// TLSInsecureSkipVerify accepts upstream certificates that fail
 	// verification, such as self-signed ones, for this channel only.
-	TLSInsecureSkipVerify bool `json:"tls_insecure_skip_verify,omitempty"`
+	TLSInsecureSkipVerify bool               `json:"tls_insecure_skip_verify,omitempty"`
+	DataPolicy            *ChannelDataPolicy `json:"data_policy,omitempty"`
 }
 
 // BindsTaskPlugin reports whether the channel is bound to the task plugin,

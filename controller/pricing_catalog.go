@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -731,9 +732,10 @@ func GetPricingVendors(c fuego.ContextNoBody) (dto.PricingVendorsData, error) {
 }
 
 // modelGroups resolves one model's servable groups, the ratios for just those
-// groups, and the auto chain restricted to them. Shared by the groups route and
-// the per-model detail so the two cannot disagree.
-func modelGroups(c fuego.ContextNoBody, pricing model.Pricing) ([]string, map[string]float64, []string) {
+// groups, the auto chain restricted to them, and their data-protection
+// profiles. Shared by the groups route and the per-model detail so the two
+// cannot disagree.
+func modelGroups(c fuego.ContextNoBody, pricing model.Pricing) ([]string, map[string]float64, []string, map[string]dto.GroupDataPolicy) {
 	all := ratio_setting.GetGroupRatioCopy()
 	groupRatio := make(map[string]float64, len(pricing.EnableGroup))
 	servesAll := common.StringsContains(pricing.EnableGroup, "all")
@@ -772,7 +774,19 @@ func modelGroups(c fuego.ContextNoBody, pricing model.Pricing) ([]string, map[st
 		}
 		return ri < rj
 	})
-	return pricing.EnableGroup, groupRatio, chain
+
+	policies := model.GroupDataPolicies()
+	providers := make(map[string]dto.GroupDataPolicy)
+	if servesAll {
+		maps.Copy(providers, policies)
+	} else {
+		for _, g := range pricing.EnableGroup {
+			if p, ok := policies[g]; ok {
+				providers[g] = p
+			}
+		}
+	}
+	return pricing.EnableGroup, groupRatio, chain, providers
 }
 
 // GetPricingModelGroups returns the group panel for ONE model. Everything is
@@ -784,19 +798,21 @@ func GetPricingModelGroups(c fuego.ContextNoBody) (dto.PricingModelGroupsData, e
 	// exactly. A 404 would carry the same information as an error the caller has
 	// to catch and then translate back into this same empty shape.
 	empty := dto.PricingModelGroupsData{
-		EnableGroups: []string{},
-		GroupRatio:   map[string]float64{},
-		AutoChain:    []string{},
+		EnableGroups:   []string{},
+		GroupRatio:     map[string]float64{},
+		AutoChain:      []string{},
+		GroupProviders: map[string]dto.GroupDataPolicy{},
 	}
 	pricing, ok := model.GetPricingByModelName(dto.GinCtx(c).Query("model"))
 	if !ok {
 		return empty, nil
 	}
-	groups, groupRatio, chain := modelGroups(c, pricing)
+	groups, groupRatio, chain, providers := modelGroups(c, pricing)
 	return dto.PricingModelGroupsData{
-		EnableGroups: groups,
-		GroupRatio:   groupRatio,
-		AutoChain:    chain,
+		EnableGroups:   groups,
+		GroupRatio:     groupRatio,
+		AutoChain:      chain,
+		GroupProviders: providers,
 	}, nil
 }
 
@@ -816,7 +832,7 @@ func GetPricingCatalogModel(c fuego.ContextNoBody) (dto.PricingCatalogDetail, er
 }
 
 func buildPricingCatalogModel(c fuego.ContextNoBody, pricing model.Pricing) dto.PricingCatalogDetail {
-	groups, groupRatio, chain := modelGroups(c, pricing)
+	groups, groupRatio, chain, providers := modelGroups(c, pricing)
 	ctx := newCatalogCtx(groupRatio)
 	d := ctx.derive(pricing)
 	md, modelType := d.md, d.modelType
@@ -834,6 +850,7 @@ func buildPricingCatalogModel(c fuego.ContextNoBody, pricing model.Pricing) dto.
 		EnableGroups:        groups,
 		GroupRatio:          groupRatio,
 		AutoChain:           chain,
+		GroupProviders:      providers,
 		ModelRatio:          pricing.ModelRatio,
 		CompletionRatio:     pricing.CompletionRatio,
 		CacheRatio:          pricing.CacheRatio,
