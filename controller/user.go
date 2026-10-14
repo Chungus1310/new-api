@@ -1313,6 +1313,9 @@ func DeleteSelf(c fuego.ContextNoBody) (dto.MessageResponse, error) {
 	if user.Role == common.RoleRootUser {
 		return dto.FailMsg("Cannot delete super administrator account")
 	}
+	if _, failure := middleware.CheckSecurityProof(dto.GinCtx(c), service.VerificationOperation{Scope: service.VerificationScopeAccountDelete}); failure != nil {
+		return dto.FailMsg(failure.Message)
+	}
 
 	if _, err := model.DeleteUserById(id); err != nil {
 		return dto.FailMsg(err.Error())

@@ -174,7 +174,7 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		selfCred := dto.NewRouter(engine, selfGroup.Group("", middleware.SessionOnly()), "User", secDashboard())
 		dto.Put(selfCriticalUser, "/self", controller.UpdateSelf)
 		dto.PutB(self, "/self/timeout", controller.UpdateTimeoutPreference)
-		dto.Delete(self, "/self", controller.DeleteSelf)
+		dto.Delete(selfCred, "/self", controller.DeleteSelf)
 		dto.Get(selfCred, "/token", controller.GenerateAccessToken)
 		accessTokenGroup := selfGroup.Group("/access_tokens", middleware.SessionOnly())
 		accessTokens := dto.NewRouter(engine, accessTokenGroup, "User", secDashboard())
