@@ -109,6 +109,8 @@ type PricingCatalogDetail struct {
 	GroupRatio   map[string]float64 `json:"group_ratio" validate:"required"`
 	// The auto-routing chain restricted to this model's groups, cheapest first.
 	AutoChain []string `json:"auto_chain" validate:"required"`
+	// Data-protection profile per group, only for groups with a recorded policy.
+	GroupProviders map[string]GroupDataPolicy `json:"group_providers" validate:"required"`
 	// Raw ratios behind the display prices, for the pricing breakdown.
 	ModelRatio       float64  `json:"model_ratio"`
 	CompletionRatio  float64  `json:"completion_ratio"`
@@ -199,6 +201,8 @@ type PricingModelGroupsData struct {
 	// cheapest first. Intersecting the global chain client-side meant shipping
 	// all of it to keep a handful of entries.
 	AutoChain []string `json:"auto_chain" validate:"required"`
+	// Data-protection profile per group, only for groups with a recorded policy.
+	GroupProviders map[string]GroupDataPolicy `json:"group_providers" validate:"required"`
 }
 
 // PricingVendor mirrors model.PricingVendor for OpenAPI schema generation.

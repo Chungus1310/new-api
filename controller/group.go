@@ -31,13 +31,19 @@ func GetUserGroups(c fuego.ContextNoBody) (*dto.Response[map[string]dto.UserGrou
 		common.SysLog("failed to read groups with an enabled channel: " + err.Error())
 		liveGroups = nil
 	}
+	policies := model.GroupDataPolicies()
 	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
+			policy := policies[groupName]
 			usableGroups[groupName] = dto.UserGroupInfo{
-				Ratio:  service.GetUserGroupRatio(userGroup, groupName),
-				Desc:   desc,
-				Online: liveGroups == nil || liveGroups[groupName],
+				Ratio:              service.GetUserGroupRatio(userGroup, groupName),
+				Desc:               desc,
+				Online:             liveGroups == nil || liveGroups[groupName],
+				SeatCountry:        policy.SeatCountry,
+				Prompts:            policy.Prompts,
+				Transfer:           policy.Transfer,
+				UnsafeThirdCountry: policy.UnsafeThirdCountry,
 			}
 		}
 	}
