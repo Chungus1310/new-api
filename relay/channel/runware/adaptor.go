@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -155,7 +156,7 @@ func imageHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayIn
 	c.Writer.WriteHeader(http.StatusOK)
 	// Write errors are not surfaced: the header is already committed, so returning an
 	// error here would have the caller write a second, conflicting body.
-	_, _ = c.Writer.Write(jsonResponse)
+	_, _ = c.Writer.Write(aimark.RewriteBody(jsonResponse))
 
 	// Runware bills by GPU time, so the same prompt at the same size can cost different
 	// amounts and no flat per-call price fits. It reports the real cost per image (we ask

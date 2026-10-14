@@ -13,6 +13,7 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -228,7 +229,7 @@ func writeImageTaskSuccess(c *gin.Context, task *model.Task, requestedModel, res
 				content.WriteString("\n")
 			}
 			content.WriteString("![image](")
-			content.WriteString(url)
+			content.WriteString(aimark.RewriteString(url))
 			content.WriteString(")")
 		}
 		c.JSON(http.StatusOK, dto.OpenAITextResponse{
@@ -250,7 +251,8 @@ func writeImageTaskSuccess(c *gin.Context, task *model.Task, requestedModel, res
 		// parseTaskResult returns either an https URL or an inline data: URI.
 		if payload, ok := strings.CutPrefix(url, "data:"); ok {
 			if _, encoded, found := strings.Cut(payload, "base64,"); found {
-				data = append(data, dto.ImageData{B64Json: encoded})
+				marked, _ := aimark.MarkBase64(encoded)
+				data = append(data, dto.ImageData{B64Json: marked})
 				continue
 			}
 		}
