@@ -4,6 +4,7 @@ type ContextKey string
 
 const (
 	ContextKeyTokenCountMeta  ContextKey = "token_count_meta"
+	ContextKeyBFFRequest      ContextKey = "bff_request"
 	ContextKeyPromptTokens    ContextKey = "prompt_tokens"
 	ContextKeyEstimatedTokens ContextKey = "estimated_tokens"
 

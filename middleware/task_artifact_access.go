@@ -111,6 +111,13 @@ func (l *taskArtifactAccessLimiter) acquire(ip, taskID, artifactKey string) (fun
 func redactTaskArtifactAccessQuery() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+		// Media link tokens embed the upstream URL; keep them out of access logs.
+		if strings.HasPrefix(path, "/v1/media/") {
+			c.Request.URL.Path = "/v1/media/:token"
+			c.Request.URL.RawPath = ""
+			c.Next()
+			return
+		}
 		isArtifactContent := strings.HasPrefix(path, "/v1/tasks/") &&
 			strings.Contains(path, "/artifacts/") &&
 			strings.HasSuffix(path, "/content")

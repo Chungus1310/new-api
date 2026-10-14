@@ -31,10 +31,14 @@ var (
 	}
 )
 
-// Mark returns the image with the AI-generated XMP packet added. Unsupported formats,
-// images that already carry a mark, and images with an XMP packet of their own come
-// back unchanged with false.
+// Mark returns the image or MP4/MOV video with the AI-generated XMP packet added.
+// Unsupported formats, files that already carry a mark, and files with an XMP packet
+// of their own come back unchanged with false.
 func Mark(img []byte) ([]byte, bool) {
+	// A byte scan of a whole video would hit "c2pa" by chance; the box walk is exact.
+	if IsMP4(img) {
+		return markMP4(img)
+	}
 	for _, m := range existingMarks {
 		if bytes.Contains(img, m) {
 			return img, false
@@ -207,12 +211,19 @@ var (
 )
 
 // RewriteBody marks every image embedded in a response body or stream chunk, either
-// as a data URL or as a base64 JSON field. Bodies without such content are returned
-// as is without scanning further.
-func RewriteBody(body []byte) []byte {
-	if !mayContainImage(body) {
-		return body
+// as a data URL or as a base64 JSON field, and with links set hands image links to
+// LinkRewriter. Bodies without such content are returned as is without scanning further.
+func RewriteBody(body []byte, links bool) []byte {
+	if containsAny(body, triggers) {
+		body = rewriteEmbedded(body)
 	}
+	if links && LinkRewriter != nil && containsAny(body, linkTriggers) {
+		body = rewriteLinks(body)
+	}
+	return body
+}
+
+func rewriteEmbedded(body []byte) []byte {
 	body = dataURLPattern.ReplaceAllFunc(body, func(m []byte) []byte {
 		sub := dataURLPattern.FindSubmatchIndex(m)
 		marked, ok := MarkBase64(string(m[sub[2]:sub[3]]))
@@ -234,17 +245,24 @@ func RewriteBody(body []byte) []byte {
 }
 
 // RewriteString is RewriteBody for string payloads.
-func RewriteString(s string) string {
+func RewriteString(s string, links bool) string {
 	for _, t := range triggers {
 		if strings.Contains(s, string(t)) {
-			return string(RewriteBody([]byte(s)))
+			return string(RewriteBody([]byte(s), links))
+		}
+	}
+	if links && LinkRewriter != nil {
+		for _, t := range linkTriggers {
+			if strings.Contains(s, string(t)) {
+				return string(RewriteBody([]byte(s), links))
+			}
 		}
 	}
 	return s
 }
 
-func mayContainImage(b []byte) bool {
-	for _, t := range triggers {
+func containsAny(b []byte, needles [][]byte) bool {
+	for _, t := range needles {
 		if bytes.Contains(b, t) {
 			return true
 		}

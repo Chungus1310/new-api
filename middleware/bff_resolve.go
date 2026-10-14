@@ -5,6 +5,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,4 +32,15 @@ func ResolvedByBFF(c *gin.Context) bool {
 	}
 	raw := strings.TrimSpace(c.GetHeader(bffServiceHeader))
 	return raw != "" && subtle.ConstantTimeCompare([]byte(raw), []byte(secret)) == 1 && IsTrustedNetworkStrict(c.ClientIP())
+}
+
+// MarkBFFRequest records ResolvedByBFF on the context for response writers outside
+// this package.
+func MarkBFFRequest() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if ResolvedByBFF(c) {
+			common.SetContextKey(c, constant.ContextKeyBFFRequest, true)
+		}
+		c.Next()
+	}
 }

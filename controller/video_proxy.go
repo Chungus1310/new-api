@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -18,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/service"
@@ -354,14 +356,55 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified, http.StatusRequestedRangeNotSatisfiable:
-		copyTaskMediaResponseHeaders(c.Writer.Header(), resp.Header)
-		setTaskMediaResponseSecurityHeaders(c.Writer.Header())
+		body := io.Reader(resp.Body)
+		var markedImage []byte
+		streamMP4 := false
+		// Range and HEAD requests pass through unmarked, since the mark changes lengths and offsets.
+		if resp.StatusCode == http.StatusOK && c.Request.Method == http.MethodGet && c.Request.Header.Get("Range") == "" {
+			buffered := bufio.NewReader(resp.Body)
+			body = buffered
+			head, _ := buffered.Peek(16)
+			switch {
+			case aimark.IsImage(head) && resp.ContentLength <= markedMediaImageMaxBytes:
+				data, err := io.ReadAll(io.LimitReader(buffered, markedMediaImageMaxBytes+1))
+				if err != nil {
+					return &taskMediaProxyError{
+						status: http.StatusBadGateway, code: "artifact_upstream_error",
+						message: "Failed to fetch artifact content", err: err,
+					}
+				}
+				body = io.MultiReader(bytes.NewReader(data), buffered)
+				if len(data) <= markedMediaImageMaxBytes {
+					if marked, ok := aimark.Mark(data); ok {
+						markedImage = marked
+					}
+				}
+			case aimark.IsMP4(head):
+				streamMP4 = true
+			}
+		}
+		header := c.Writer.Header()
+		copyTaskMediaResponseHeaders(header, resp.Header)
+		setTaskMediaResponseSecurityHeaders(header)
+		if markedImage != nil || streamMP4 {
+			header.Del("Accept-Ranges")
+			header.Del("Content-Length")
+		}
+		if markedImage != nil {
+			header.Set("Content-Length", strconv.Itoa(len(markedImage)))
+			body = bytes.NewReader(markedImage)
+		}
 		c.Status(resp.StatusCode)
 		c.Writer.WriteHeaderNow()
 		if c.Request.Method == http.MethodHead || resp.StatusCode == http.StatusNotModified {
 			return nil
 		}
-		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
+		if streamMP4 {
+			err = copyMarkedMP4(c.Writer, body)
+		} else {
+			_, err = io.Copy(c.Writer, body)
+		}
+		if err != nil {
 			logger.LogError(c.Request.Context(), common.LogText("Failed to stream task media: %v", err))
 		}
 		return nil
@@ -659,27 +702,21 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 		return fmt.Errorf("invalid data url media type")
 	}
 
-	var encoding *base64.Encoding
-	var contentLength int64
-	for _, candidate := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding} {
-		decodedLength, err := io.Copy(io.Discard, base64.NewDecoder(candidate, strings.NewReader(payload)))
-		if err == nil {
-			encoding = candidate
-			contentLength = decodedLength
-			break
+	content, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		if content, err = base64.RawStdEncoding.DecodeString(payload); err != nil {
+			return fmt.Errorf("invalid base64 data")
 		}
 	}
-	if encoding == nil {
-		return fmt.Errorf("invalid base64 data")
-	}
+	content, _ = aimark.Mark(content)
 
 	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	c.Writer.Header().Set("Content-Length", strconv.Itoa(len(content)))
 	setTaskMediaResponseSecurityHeaders(c.Writer.Header())
 	c.Writer.WriteHeader(http.StatusOK)
 	if c.Request.Method == http.MethodHead {
 		return nil
 	}
-	_, err := io.Copy(c.Writer, base64.NewDecoder(encoding, strings.NewReader(payload)))
+	_, err = c.Writer.Write(content)
 	return err
 }
