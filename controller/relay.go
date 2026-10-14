@@ -597,8 +597,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			relayInfo.LastError = nil
 			// Denominator for every rate-based disable gate, so it must be recorded
 			// regardless of which of those gates happens to be enabled.
-			service.RecordChannelSuccess(relayInfo.ChannelId)
-			if cleared := service.RecordLanePromptServed(relayInfo.ChannelId, relayInfo.GetEstimatePromptTokens()); cleared > 0 {
+			// channel.Id, not relayInfo.ChannelId: image task channels succeed
+			// without InitChannelMeta, so relayInfo.ChannelMeta can still be nil here.
+			service.RecordChannelSuccess(channel.Id)
+			if cleared := service.RecordLanePromptServed(channel.Id, relayInfo.GetEstimatePromptTokens()); cleared > 0 {
 				logger.LogInfo(c, fmt.Sprintf("channel-guard: lane #%d (%s) served %d tokens, cleared %d long-prompt stall(s)", channel.Id, channel.Name, relayInfo.GetEstimatePromptTokens(), cleared))
 			}
 			// A long request that finished is the denominator the truncation gate
