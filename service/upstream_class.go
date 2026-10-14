@@ -106,25 +106,25 @@ var upstreamRules = []upstreamRule{
 	// database degraded, CPU admission, no channel found, platform concurrency):
 	// 290 rows across 55 lanes in three minutes on 2026-09-16. Counted per lane
 	// they read as 55 broken merchants.
-	{markers: []string{"认证数据库降级队列已满", "cpu 使用率超过平台准入阈值", "平台当前没有找到满足", "请求过多、并发过高"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true, Provider: true}, userMessage: "The provider platform is having trouble right now, not your request. Try again in a moment."},
+	{markers: []string{"认证数据库降级队列已满", "cpu 使用率超过平台准入阈值", "平台当前没有找到满足", "请求过多、并发过高", "请求体内存保护已触发", "平台公共依赖暂时不可用"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true, Provider: true}, userMessage: "The provider platform is having trouble right now, not your request. Try again in a moment."},
 	// Reseller, this merchant's channel cannot speak the request's protocol, and
 	// the relay layer between us returned a broken reply (arrives as 404, 502, 400
 	// or 520, so no status default covers every form): a sibling serves it and a
 	// lane doing it all day is dead.
-	{markers: []string{"协议能力与本次请求不匹配", "上游服务、网络链路或代理返回异常响应"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider could not handle this request. Retry and it will go to a different one."},
+	{markers: []string{"协议能力与本次请求不匹配", "上游服务、网络链路或代理返回异常响应", "模型请求失败，请稍后重试或更换模型", "当前请求未成功", "对话失败"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider could not handle this request. Retry and it will go to a different one."},
 	// The platform already paused a merchant that kept failing this model, or every
 	// candidate it could route to failed: the lane is cooling, not dead.
 	{markers: []string{"持续失败，平台已暂停", "智能路由候选均请求失败", "所有回退分组均不可用"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider paused this route after repeated failures. Retry and another provider will pick it up."},
-	{markers: []string{"负载已饱和", "该模型当前访问量过大", "请求暂时未能完成，请稍后重试", "当前模型服务暂不可用"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "The provider is overloaded right now. Retry and another provider will pick it up."},
+	{markers: []string{"负载已饱和", "该模型当前访问量过大", "请求暂时未能完成，请稍后重试", "当前模型服务暂不可用", "请等待其他对话生成完毕"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "The provider is overloaded right now. Retry and another provider will pick it up."},
 	// A relay running new-api answers this when none of its own channels serves the
 	// model for that group: the lane is empty, not refusing the request.
 	{markers: []string{"的可用渠道不存在", "的可用管道不存在", "无可用渠道", "no available channel for model"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "This provider has no capacity for that model right now. Retry and another provider will pick it up."},
-	{markers: []string{"等待响应超时"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider took too long to answer. Retry and another provider will pick it up."},
-	{markers: []string{"sensitive words detected", "内容不符合安全策略"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
+	{markers: []string{"等待响应超时", "上游响应超时", "未接收到上游响应内容"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider took too long to answer. Retry and another provider will pick it up."},
+	{markers: []string{"sensitive words detected", "内容不符合安全策略", "请求内容未通过安全检查"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
 	{markers: []string{"免费点数不足", "预扣费额度失败", "当前商户余额不足"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true, Provider: true}, userMessage: "This provider ran out of credit on their side. That is on us, not you: retry and the request goes to another provider."},
 	{markers: []string{"的价格尚未由管理员配置", "该商家渠道已暂停、下架或不存在"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider can no longer serve this model. We have removed it from rotation, so retry and another provider will take it."},
 	{markers: []string{"智能路由流式响应中途失败"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure}, userMessage: "The provider dropped the response partway through. Please send the request again."},
-	{markers: []string{"请求参数不正确，请检查请求体", "请求未能完成，请检查请求参数", "限制小数点"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider rejected one of the request's parameters. Retry and it will go to a provider that accepts it."},
+	{markers: []string{"请求参数不正确，请检查请求体", "请求未能完成，请检查请求参数", "限制小数点", "image_url格式错误", "当前模型或商家不支持请求中的能力", "上游渠道拒绝了图片请求"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider rejected one of the request's parameters. Retry and it will go to a provider that accepts it."},
 	{markers: []string{"当前会话被上游安全策略封锁"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "The provider's safety policy blocked this conversation. Retry to reach another provider, or start a new chat."},
 	{markers: []string{"提示词或参考图此前已被上游内容审核拒绝", "提示词安全审计拒绝了本次请求"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
 	{markers: []string{"免费请求额度已用完", "额度已用尽"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
@@ -224,8 +224,8 @@ var upstreamRules = []upstreamRule{
 	// guest lane enabled at 0 to 2% pass on 2026-09-23, each failure holding the
 	// caller for the whole first byte deadline; the scheduled test re-enables a
 	// lane once the throttle lifts.
-	{markers: []string{"请求过于频繁"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This model is rate limited right now. Nothing is used up on your side. Try again in a few moments."},
-	{markers: []string{"per 1 second", "parallel requests (", "rate limit reached", "rate limit exceeded", "resource has been exhausted", "temporarily overloaded", "this model is busy right now", "rate_limit_exceeded", "并发上限", "总请求数限制"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "This model is rate limited right now. Nothing is used up on your side. Try again in a few moments."},
+	{markers: []string{"请求过于频繁", "当前访客资源不足"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This model is rate limited right now. Nothing is used up on your side. Try again in a few moments."},
+	{markers: []string{"per 1 second", "parallel requests (", "rate limit reached", "rate limit exceeded", "resource has been exhausted", "temporarily overloaded", "this model is busy right now", "rate_limit_exceeded", "并发上限", "总请求数限制", "上游返回频率限制", "上游文件上传额度已达到限制"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "This model is rate limited right now. Nothing is used up on your side. Try again in a few moments."},
 	// Any host, the lane cannot serve this model's requests at all (unsupported
 	// parameter, wrong model id, audio model behind a chat route): deterministic
 	// for this lane only, so fail over AND let the rate guard pull it.
