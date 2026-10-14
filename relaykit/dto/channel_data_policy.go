@@ -60,10 +60,18 @@ func HasSafeTransferBasis(transfer string) bool {
 	return transfer == DataPolicyTransferAdequacy || transfer == DataPolicyTransferDPF || transfer == DataPolicyTransferSCC
 }
 
-// UnsafeThirdCountry reports a transfer to a known seat outside the EEA and
-// the adequacy list with no transfer basis. An unknown seat is not reported.
+// UnsafeThirdCountry reports a transfer without an Art. 45/46 GDPR basis.
+// Transfer=none is unsafe whatever the seat: it marks providers that pass
+// prompts on to unvetted recipients (decentralised nodes, unnamed upstreams).
+// Otherwise only a known seat outside the EEA and the adequacy list counts.
 func (p *ChannelDataPolicy) UnsafeThirdCountry() bool {
-	if p == nil || p.SeatCountry == "" || HasSafeTransferBasis(p.Transfer) {
+	if p == nil || HasSafeTransferBasis(p.Transfer) {
+		return false
+	}
+	if p.Transfer == DataPolicyTransferNone {
+		return true
+	}
+	if p.SeatCountry == "" {
 		return false
 	}
 	return !IsEEACountry(p.SeatCountry) && !IsEUAdequacyCountry(p.SeatCountry)
