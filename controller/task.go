@@ -382,7 +382,7 @@ func TaskArtifactContent(c *gin.Context) {
 	}
 	clientRequest := relaychannel.TaskArtifactClientRequest{
 		Method:  c.Request.Method,
-		Headers: taskArtifactClientHeaders(c.Request.Header),
+		Headers: taskArtifactClientHeaders(c.Request),
 	}
 	descriptor, err := provider.BuildContentRequest(c.Request.Context(), task, artifactKey, clientRequest)
 	if err != nil || descriptor == nil {
@@ -397,10 +397,14 @@ func TaskArtifactContent(c *gin.Context) {
 	}
 }
 
-func taskArtifactClientHeaders(headers http.Header) map[string]string {
+func taskArtifactClientHeaders(request *http.Request) map[string]string {
 	result := make(map[string]string, 4)
-	for _, name := range []string{"Range", "If-Range", "If-None-Match", "If-Modified-Since"} {
-		if value := strings.TrimSpace(headers.Get(name)); value != "" {
+	names := []string{"Range", "If-Range", "If-None-Match", "If-Modified-Since"}
+	if isOpenRangeFromStart(request) {
+		names = names[2:]
+	}
+	for _, name := range names {
+		if value := strings.TrimSpace(request.Header.Get(name)); value != "" {
 			result[name] = value
 		}
 	}

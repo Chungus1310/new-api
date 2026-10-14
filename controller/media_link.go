@@ -54,6 +54,11 @@ func MediaLinkContent(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
 		c.Redirect(http.StatusFound, rawURL)
 	}
+	// Safari probes with bytes=0-1 and needs a 206, which a marked body cannot give.
+	if c.Request.Header.Get("Range") != "" && !isOpenRangeFromStart(c.Request) {
+		fallback()
+		return
+	}
 	if service.ValidateSSRFProtectedFetchURL(rawURL) != nil {
 		fallback()
 		return

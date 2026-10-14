@@ -87,7 +87,7 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 		common.SysError(common.LogText("error marshalling stream response: %s", err.Error()))
 	} else {
 		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
+		c.Render(-1, common.CustomEvent{Data: "data: " + string(service.MarkGeneratedMedia(c, jsonData))})
 	}
 	_ = FlushWriter(c)
 	return nil
@@ -99,7 +99,7 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 	}
 
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
+	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", service.MarkGeneratedMediaString(c, data))})
 	_ = FlushWriter(c)
 }
 

@@ -202,11 +202,12 @@ func MarkBase64(s string) (string, bool) {
 var (
 	dataURLPattern = regexp.MustCompile(`data:image/(?:png|jpe?g|webp);base64,([A-Za-z0-9+/]+={0,2})`)
 	// JSON string fields that carry raw base64 images across the providers we relay
-	// (OpenAI images and Responses, Gemini inlineData and Imagen, Runware).
+	// (OpenAI images and Responses, Gemini inlineData and Imagen, Claude image blocks, Runware).
 	b64FieldPattern = regexp.MustCompile(`"(b64_json|result|bytesBase64Encoded|imageBase64Data|data|partial_image_b64)"(\s*:\s*")([A-Za-z0-9+/]{256,}={0,2})"`)
 	triggers        = [][]byte{
 		[]byte("data:image/"), []byte(`"b64_json"`), []byte(`"result"`), []byte(`"bytesBase64Encoded"`),
 		[]byte(`"imageBase64Data"`), []byte(`"inlineData"`), []byte(`"inline_data"`), []byte(`"partial_image_b64"`),
+		[]byte(`"media_type"`),
 	}
 )
 

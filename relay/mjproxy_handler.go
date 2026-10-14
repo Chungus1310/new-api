@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -25,6 +27,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+const midjourneyImageMaxBytes = 32 << 20
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
@@ -89,10 +93,19 @@ func RelayMidjourneyImage(c *gin.Context) {
 		// 如果无法确定内容类型，则默认为jpeg
 		contentType = "image/jpeg"
 	}
+	reader := bufio.NewReader(resp.Body)
+	body := io.Reader(reader)
+	if head, _ := reader.Peek(16); aimark.IsImage(head) && resp.ContentLength <= midjourneyImageMaxBytes {
+		data, readErr := io.ReadAll(io.LimitReader(reader, midjourneyImageMaxBytes+1))
+		if readErr == nil && len(data) <= midjourneyImageMaxBytes {
+			data, _ = aimark.Mark(data)
+		}
+		body = io.MultiReader(bytes.NewReader(data), reader)
+	}
 	// 设置响应的内容类型
 	c.Writer.Header().Set("Content-Type", contentType)
 	// 将图片流式传输到响应体
-	_, err = io.Copy(c.Writer, resp.Body)
+	_, err = io.Copy(c.Writer, body)
 	if err != nil {
 		log.Println(common.LogText("Failed to stream image: %v", err))
 	}
@@ -158,7 +171,7 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
 	} else {
-		midjourneyTask.ImageUrl = originTask.ImageUrl
+		midjourneyTask.ImageUrl = service.MarkGeneratedMediaLink(c, originTask.ImageUrl)
 	}
 	if originTask.VideoUrl != "" {
 		midjourneyTask.VideoUrl = originTask.VideoUrl
