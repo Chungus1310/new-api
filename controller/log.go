@@ -20,6 +20,11 @@ func GetAllLogs(c fuego.ContextWithParams[dto.GetAllLogsParams]) (*dto.Response[
 	} else {
 		model.FormatRootLogs(logs)
 	}
+	if ginCtx.GetInt("role") < common.RoleAdminUser {
+		for _, l := range logs {
+			l.Ip = ""
+		}
+	}
 	// Cross-user log browsing: prompts are not stored, but usernames, models,
 	// spend and channel routing for every account are.
 	recordSensitiveRead(ginCtx, "read.log_search", map[string]interface{}{

@@ -188,6 +188,9 @@ func GetAuditLogs(filter AuditLogFilter, start, limit, viewerRole int) ([]*Audit
 		visibility = logOtherVisibilityAdmin
 	}
 	for _, entry := range logs {
+		if !filter.SelfView && viewerRole < common.RoleAdminUser {
+			entry.Ip = ""
+		}
 		if visibility != logOtherVisibilityRoot {
 			entry.Other.RootInfo = nil
 		}

@@ -587,6 +587,7 @@ func GetAllUsers(c fuego.ContextNoBody) (*dto.Response[dto.PageData[*model.User]
 	if err != nil {
 		return dto.FailPage[*model.User](err.Error())
 	}
+	hideUserIPsBelowAdmin(dto.UserRole(c), users...)
 	recordSensitiveRead(ginCtx, "read.user_list", map[string]interface{}{
 		"page":  pageInfo.GetPage(),
 		"count": len(users),
@@ -602,6 +603,7 @@ func SearchUsers(c fuego.ContextWithParams[dto.SearchUsersParams]) (*dto.Respons
 	if err != nil {
 		return dto.FailPage[*model.User](err.Error())
 	}
+	hideUserIPsBelowAdmin(dto.UserRole(c), users...)
 	recordSensitiveRead(dto.GinCtx(c), "read.user_search", map[string]interface{}{
 		"keyword": p.Keyword,
 		"count":   len(users),
@@ -676,7 +678,19 @@ func GetUser(c fuego.ContextNoBody) (*dto.Response[model.User], error) {
 		return dto.Fail[model.User]("No permission to access users of same or higher level")
 	}
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
+	hideUserIPsBelowAdmin(myRole, user)
 	return dto.Ok(*user)
+}
+
+// hideUserIPsBelowAdmin keeps registration addresses to admins: moderators
+// read the same user views but have no need for them.
+func hideUserIPsBelowAdmin(viewerRole int, users ...*model.User) {
+	if viewerRole >= common.RoleAdminUser {
+		return
+	}
+	for _, user := range users {
+		user.RegisterIp = ""
+	}
 }
 
 func GenerateAccessToken(c fuego.ContextNoBody) (*dto.Response[string], error) {
