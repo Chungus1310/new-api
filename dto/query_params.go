@@ -46,11 +46,13 @@ type TopUpSearchParams struct {
 
 type GenerateOAuthCodeParams struct {
 	Provider     string `query:"provider" description:"OAuth provider name"`
-	Intent       string `query:"intent" description:"OAuth flow intent: login or bind"`
+	Intent       string `query:"intent" description:"OAuth flow intent: login, bind or verify"`
 	Aff          string `query:"aff" description:"Affiliate code"`
 	RedirectURI  string `query:"redirect_uri" description:"URL to redirect to after OAuth login (must match allowed origins)"`
 	Action       string `query:"action" description:"Set to 'bind' to link OAuth provider to existing account (requires Authorization header)"`
 	CustomerType string `query:"customer_type" description:"Declared customer type for an account created by this login: consumer or business"`
+	Scope        string `query:"scope" description:"Step-up scope a verify intent proves (requires Authorization header)"`
+	Context      string `query:"context" description:"JSON object with the step-up context, for scopes that bind one"`
 }
 
 type WeChatBindParams struct {

@@ -92,7 +92,10 @@ func GenerateOAuthCodeQuery(c fuego.ContextWithParams[dto.GenerateOAuthCodeParam
 	if redirectURI != "" && !common.IsAllowedRedirectURI(redirectURI) {
 		return dto.Fail[string]("The redirect URI is not in the list of allowed origins")
 	}
-	request := oauthStateRequest{Provider: p.Provider, Intent: intent, Aff: p.Aff, CustomerType: p.CustomerType}
+	request := oauthStateRequest{Provider: p.Provider, Intent: intent, Aff: p.Aff, CustomerType: p.CustomerType, Scope: strings.TrimSpace(p.Scope)}
+	if p.Context != "" {
+		request.Context = json.RawMessage(p.Context)
+	}
 	state, _, _, ok := generateOAuthState(ginCtx, request, redirectURI)
 	if !ok {
 		// The core already wrote the error response on the gin context.
@@ -190,6 +193,9 @@ func generateOAuthState(c *gin.Context, request oauthStateRequest, redirectURI s
 				return "", time.Time{}, oauthFlowPayload{}, false
 			}
 			flowPayload.Verification = verification
+			if redirectURI != "" {
+				flowPayload.SessionIdentity = &identity
+			}
 		}
 	}
 	payload, err := common.Marshal(flowPayload)
@@ -263,8 +269,19 @@ func HandleOAuth(c *gin.Context) {
 	// the header-resolved user recorded at state creation: the browser reaching
 	// this callback carries no dashboard session for this origin.
 	externalBind := pendingFlow.Intent == model.AuthFlowIntentBind && redirectURI != "" && pendingFlow.SessionId == ""
+	// An external-frontend verification reaches this callback without the session
+	// that started it, so it is checked against the session recorded in the flow.
+	externalVerify := pendingFlow.Intent == model.AuthFlowIntentVerify && redirectURI != ""
 	if externalBind {
 		consumeMatch.UserId = pendingFlow.UserId
+	} else if externalVerify {
+		identity := pendingPayload.SessionIdentity
+		if identity == nil || identity.UserID != pendingFlow.UserId || identity.SessionID != pendingFlow.SessionId {
+			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
+		consumeMatch.UserId = identity.UserID
+		consumeMatch.SessionId = identity.SessionID
 	} else if pendingFlow.Intent == model.AuthFlowIntentBind || pendingFlow.Intent == model.AuthFlowIntentVerify {
 		// Bind and verification callbacks must use the dashboard session that started them.
 		identity, ok := middleware.GetSessionAuthIdentity(c)
@@ -375,23 +392,40 @@ func HandleOAuth(c *gin.Context) {
 	case model.AuthFlowIntentLogin:
 		handleOAuthLogin(c, provider, oauthUser, token, flow, redirectURI)
 	case model.AuthFlowIntentVerify:
-		handleOAuthVerification(c, providerName, oauthUser, flow)
+		handleOAuthVerification(c, providerName, oauthUser, flow, redirectURI)
 	}
 }
 
-func handleOAuthVerification(c *gin.Context, provider string, oauthUser *oauth.OAuthUser, flow *model.AuthFlow) {
+func handleOAuthVerification(c *gin.Context, provider string, oauthUser *oauth.OAuthUser, flow *model.AuthFlow, redirectURI string) {
 	var payload oauthFlowPayload
 	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil {
 		writeSecurityOperationError(c, err)
 		return
 	}
 	identity, _ := middleware.GetSessionAuthIdentity(c)
+	if redirectURI != "" && payload.SessionIdentity != nil {
+		identity = *payload.SessionIdentity
+	}
 	proof, err := service.FinishOAuthVerification(identity, provider, oauthUser.ProviderUserID, payload.Verification)
 	if err != nil {
+		if redirectURI != "" {
+			_ = c.Error(err)
+			message := service.ErrVerificationFailed.Error()
+			if errors.Is(err, service.ErrOAuthAccountMismatch) {
+				message = service.ErrOAuthAccountMismatch.Error()
+			}
+			if setupOAuthErrorRedirect(c, redirectURI, message) {
+				return
+			}
+		}
 		writeSecurityOperationError(c, err)
 		return
 	}
 	recordUserSecurityAudit(c, identity.UserID, "user.security_verify", map[string]any{"method": proof.Method, "scope": proof.Scope, "provider": provider})
+	if redirectURI != "" {
+		setupVerifyAndRedirect(identity.UserID, proof, c, redirectURI)
+		return
+	}
 	common.ApiSuccess(c, proof)
 }
 

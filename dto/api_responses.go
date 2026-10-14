@@ -72,6 +72,10 @@ type OAuthExchangeData struct {
 	DisplayName     string `json:"display_name"`
 	Role            int    `json:"role"`
 	Action          string `json:"action,omitempty"`
+	// Set when Action is verify: the step-up proof the OAuth round trip earned.
+	ProofToken     string `json:"proof_token,omitempty"`
+	ProofExpiresAt int64  `json:"proof_expires_at,omitempty"`
+	Scope          string `json:"scope,omitempty"`
 }
 
 // --- Partial annotation types for unconvertible routes ---

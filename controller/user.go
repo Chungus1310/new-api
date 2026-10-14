@@ -369,6 +369,35 @@ func setupBindAndRedirect(user *model.User, c *gin.Context, redirectURI string) 
 	})
 }
 
+// setupVerifyAndRedirect hands an external frontend the step-up proof through
+// a one-time exchange code, so the proof never appears in a URL.
+func setupVerifyAndRedirect(userID int, proof *service.SecurityProof, c *gin.Context, redirectURI string) {
+	code, err := common.StoreOAuthExchangeCode(&common.OAuthExchangeData{
+		UserID:         userID,
+		Action:         "verify",
+		ProofToken:     proof.ProofToken,
+		ProofExpiresAt: proof.ExpiresAt,
+		Scope:          proof.Scope,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	parsed, _ := url.Parse(redirectURI)
+	q := parsed.Query()
+	q.Set("code", code)
+	parsed.RawQuery = q.Encode()
+
+	c.JSON(http.StatusOK, dto.ApiResponse{
+		Success: true,
+		Message: "redirect",
+		Data: dto.LoginData{
+			RedirectURL: parsed.String(),
+		},
+	})
+}
+
 // setupOAuthErrorRedirect sends the external frontend a redirect URL carrying
 // the error, so a failed bind/login (e.g. already_bound) bounces back to the
 // originating frontend instead of stranding the user on the API host. Returns
@@ -415,6 +444,9 @@ func ExchangeOAuthCode(c fuego.ContextWithBody[dto.OAuthExchangeRequest]) (*dto.
 		DisplayName:     data.DisplayName,
 		Role:            data.Role,
 		Action:          data.Action,
+		ProofToken:      data.ProofToken,
+		ProofExpiresAt:  data.ProofExpiresAt,
+		Scope:           data.Scope,
 	})
 }
 
