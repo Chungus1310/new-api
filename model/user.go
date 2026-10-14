@@ -123,9 +123,49 @@ type User struct {
 	// cleared after 30 days without losing the history they need. json:"-" on purpose:
 	// RegisterIp is serialized to moderators by GetAllUsers/SearchUsers/GetUser, and the
 	// marker has no reason to travel that path.
-	RegisterIpHash   string                     `json:"-" gorm:"type:varchar(64);column:register_ip_hash;index"`
-	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	RegisterIpHash string `json:"-" gorm:"type:varchar(64);column:register_ip_hash;index"`
+	AuthVersion    int64  `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	// The user's own declaration, kept as evidence: a consumer makes us the controller
+	// of the prompt data, a business customer makes us its processor. Empty means the
+	// account predates the question or has not answered it yet.
+	CustomerType     string                     `json:"customer_type" gorm:"type:varchar(16);default:'';column:customer_type"`
+	CustomerTypeAt   int64                      `json:"customer_type_at" gorm:"type:bigint;default:0;column:customer_type_at"`
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+}
+
+const (
+	CustomerTypeConsumer = "consumer"
+	CustomerTypeBusiness = "business"
+)
+
+func IsValidCustomerType(customerType string) bool {
+	return customerType == CustomerTypeConsumer || customerType == CustomerTypeBusiness
+}
+
+// SetCustomerType records the declaration with the moment it was made. Callers
+// validate the value first.
+func (user *User) SetCustomerType(customerType string) {
+	user.CustomerType = customerType
+	user.CustomerTypeAt = common.GetTimestamp()
+}
+
+// UpdateUserCustomerType stores a new declaration and returns the previous one.
+// Repeating the current answer keeps the original timestamp.
+func UpdateUserCustomerType(userId int, customerType string) (string, error) {
+	var previous string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx.Model(&User{})).Where("id = ?", userId).Select("customer_type").Scan(&previous).Error; err != nil {
+			return err
+		}
+		if previous == customerType {
+			return nil
+		}
+		return tx.Model(&User{}).Where("id = ?", userId).Updates(map[string]any{
+			"customer_type":    customerType,
+			"customer_type_at": common.GetTimestamp(),
+		}).Error
+	})
+	return previous, err
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -1130,6 +1170,9 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 		// the address with a stale value, or blank the marker the abuse caps run on.
 		"register_ip",
 		"register_ip_hash",
+		// Only the user's own declaration writes these, never a round-tripped admin save.
+		"customer_type",
+		"customer_type_at",
 		"quota",
 		"used_quota",
 		"request_count",

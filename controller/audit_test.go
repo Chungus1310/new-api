@@ -37,12 +37,13 @@ func TestRecordUserSecurityAuditSurvivesIncompleteContext(t *testing.T) {
 // action string with none of its params.
 func TestAuditContentTemplatesCoverNewlyAuditedActions(t *testing.T) {
 	cases := map[string]map[string]interface{}{
-		"token.create":       {"id": 27952, "name": "backup-0827"},
-		"token.delete":       {"id": 27952, "name": "backup-0827"},
-		"token.delete_batch": {"count": 3},
-		"user.email_bind":    {"from": "old@example.com", "to": "new@example.com"},
-		"user.oauth_bind":    {"provider": "discord", "provider_user_id": "123"},
-		"user.oauth_unbind":  {"provider": "discord"},
+		"token.create":               {"id": 27952, "name": "backup-0827"},
+		"token.delete":               {"id": 27952, "name": "backup-0827"},
+		"token.delete_batch":         {"count": 3},
+		"user.email_bind":            {"from": "old@example.com", "to": "new@example.com"},
+		"user.oauth_bind":            {"provider": "discord", "provider_user_id": "123"},
+		"user.oauth_unbind":          {"provider": "discord"},
+		"user.customer_type_declare": {"from": "none", "to": "business"},
 	}
 	for action, params := range cases {
 		t.Run(action, func(t *testing.T) {

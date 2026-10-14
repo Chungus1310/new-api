@@ -45,11 +45,12 @@ type TopUpSearchParams struct {
 // ─── OAuth ──────────────────────────────────────────────────────────
 
 type GenerateOAuthCodeParams struct {
-	Provider    string `query:"provider" description:"OAuth provider name"`
-	Intent      string `query:"intent" description:"OAuth flow intent: login or bind"`
-	Aff         string `query:"aff" description:"Affiliate code"`
-	RedirectURI string `query:"redirect_uri" description:"URL to redirect to after OAuth login (must match allowed origins)"`
-	Action      string `query:"action" description:"Set to 'bind' to link OAuth provider to existing account (requires Authorization header)"`
+	Provider     string `query:"provider" description:"OAuth provider name"`
+	Intent       string `query:"intent" description:"OAuth flow intent: login or bind"`
+	Aff          string `query:"aff" description:"Affiliate code"`
+	RedirectURI  string `query:"redirect_uri" description:"URL to redirect to after OAuth login (must match allowed origins)"`
+	Action       string `query:"action" description:"Set to 'bind' to link OAuth provider to existing account (requires Authorization header)"`
+	CustomerType string `query:"customer_type" description:"Declared customer type for an account created by this login: consumer or business"`
 }
 
 type WeChatBindParams struct {
