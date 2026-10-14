@@ -7,6 +7,9 @@ type RegisterRequest struct {
 	Email            string `json:"email,omitempty" validate:"max=50"`
 	VerificationCode string `json:"verification_code,omitempty"`
 	AffCode          string `json:"aff_code,omitempty"`
+	// "consumer" or "business"; optional so older clients still register and are
+	// asked later.
+	CustomerType string `json:"customer_type,omitempty" validate:"omitempty,oneof=consumer business"`
 }
 
 // LoginRequest is the request body for POST /api/user/login.
@@ -130,6 +133,8 @@ type UserSelfData struct {
 	LinuxDOId                 string  `json:"linux_do_id"`
 	Setting                   string  `json:"setting"`
 	StripeCustomer            string  `json:"stripe_customer"`
+	CustomerType              string  `json:"customer_type"`
+	CustomerTypeAt            int64   `json:"customer_type_at"`
 	SidebarModules            string  `json:"sidebar_modules"`
 	Permissions               any     `json:"permissions"`
 	// False for OAuth-only accounts that never set a local password.

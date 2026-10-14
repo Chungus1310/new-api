@@ -508,6 +508,9 @@ func Register(c fuego.ContextWithBody[dto.RegisterRequest]) (dto.MessageResponse
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = req.Email
 	}
+	if req.CustomerType != "" {
+		cleanUser.SetCustomerType(req.CustomerType)
+	}
 	if err := cleanUser.Insert(inviterId); err != nil {
 		return dto.FailMsg(err.Error())
 	}
@@ -787,6 +790,8 @@ func GetSelf(c fuego.ContextNoBody) (*dto.Response[dto.UserSelfData], error) {
 		LinuxDOId:                 user.LinuxDOId,
 		Setting:                   user.Setting,
 		StripeCustomer:            user.StripeCustomer,
+		CustomerType:              user.CustomerType,
+		CustomerTypeAt:            user.CustomerTypeAt,
 		SidebarModules:            userSetting.SidebarModules,
 		Permissions:               permissions,
 		HasPassword:               hasPassword,
@@ -850,6 +855,8 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
+		"customer_type":     user.CustomerType,
+		"customer_type_at":  user.CustomerTypeAt,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
 	}
@@ -1117,6 +1124,25 @@ func UpdateSelf(c fuego.ContextNoBody) (dto.ApiResponse, error) {
 			return dto.FailAny("Update failed")
 		}
 
+		return dto.OkMsgAny("Update successful", nil)
+	}
+
+	if customerType, exists := requestData["customer_type"]; exists {
+		customerTypeStr, _ := customerType.(string)
+		if !model.IsValidCustomerType(customerTypeStr) {
+			return dto.FailAny("Invalid parameters")
+		}
+		userId := dto.UserID(c)
+		previous, err := model.UpdateUserCustomerType(userId, customerTypeStr)
+		if err != nil {
+			return dto.FailAny("Update failed")
+		}
+		if previous != customerTypeStr {
+			if previous == "" {
+				previous = "none"
+			}
+			recordUserSecurityAudit(ginCtx, userId, "user.customer_type_declare", map[string]any{"from": previous, "to": customerTypeStr})
+		}
 		return dto.OkMsgAny("Update successful", nil)
 	}
 
