@@ -98,7 +98,7 @@ func VideoProxy(c *gin.Context) {
 					if provider, ok := adaptor.(relaychannel.TaskContentRequestProvider); ok {
 						descriptor, adaptorErr = provider.BuildContentRequest(c.Request.Context(), task, artifact.Key, relaychannel.TaskArtifactClientRequest{
 							Method:  c.Request.Method,
-							Headers: taskArtifactClientHeaders(c.Request.Header),
+							Headers: taskArtifactClientHeaders(c.Request),
 						})
 					}
 				}
@@ -324,9 +324,14 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 			message: "Artifact request headers were rejected", err: err,
 		}
 	}
-	clientHeaders := taskArtifactClientHeaders(c.Request.Header)
+	clientHeaders := taskArtifactClientHeaders(c.Request)
 	for name, value := range clientHeaders {
 		req.Header.Set(name, value)
+	}
+	openRange := isOpenRangeFromStart(c.Request)
+	if openRange {
+		req.Header.Del("Range")
+		req.Header.Del("If-Range")
 	}
 
 	client = taskMediaRedirectClient(client, proxy, c, clientHeaders, descriptor.Credentialless)
@@ -360,7 +365,7 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		var markedImage []byte
 		streamMP4 := false
 		// Range and HEAD requests pass through unmarked, since the mark changes lengths and offsets.
-		if resp.StatusCode == http.StatusOK && c.Request.Method == http.MethodGet && c.Request.Header.Get("Range") == "" {
+		if resp.StatusCode == http.StatusOK && c.Request.Method == http.MethodGet && (openRange || c.Request.Header.Get("Range") == "") {
 			buffered := bufio.NewReader(resp.Body)
 			body = buffered
 			head, _ := buffered.Peek(16)
@@ -637,6 +642,12 @@ func isTaskMediaFallbackLoop(rawURL, taskID string) bool {
 	}
 	artifactPrefix := "/v1/tasks/" + taskID + "/artifacts/"
 	return strings.HasPrefix(path, artifactPrefix) && strings.HasSuffix(path, "/content")
+}
+
+// isOpenRangeFromStart reports a GET for bytes=0-, which browsers send first for a
+// video element and which may be answered with the whole file as a 200.
+func isOpenRangeFromStart(request *http.Request) bool {
+	return request.Method == http.MethodGet && strings.TrimSpace(request.Header.Get("Range")) == "bytes=0-"
 }
 
 func copyTaskMediaResponseHeaders(destination, source http.Header) {
