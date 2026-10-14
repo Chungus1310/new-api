@@ -3,6 +3,7 @@ package aimark
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,9 +14,17 @@ import (
 var LinkRewriter func(rawURL string) (string, bool)
 
 var (
-	linkTriggers = [][]byte{[]byte(`"image_url"`), []byte(`"url"`), []byte("](http")}
+	linkTriggers = [][]byte{
+		[]byte(`"image_url"`), []byte(`"url"`), []byte("](http"), []byte(`"fileUri"`), []byte(`"file_uri"`),
+	}
 	// Chat completion image parts, as an object or as a bare string.
 	imageURLPattern = regexp.MustCompile(`"image_url"\s*:\s*(?:\{\s*"url"\s*:\s*)?("(?:[^"\\]|\\.)*")`)
+	// Claude image blocks with a url source.
+	claudeImageURLPattern = regexp.MustCompile(`"type"\s*:\s*"image"\s*,\s*"source"\s*:\s*\{[^{}]*?"url"\s*:\s*("(?:[^"\\]|\\.)*")`)
+	// Gemini fileData parts; the mime type decides whether the file is an image.
+	fileDataPattern      = regexp.MustCompile(`"(?:fileData|file_data)"\s*:\s*\{[^{}]*\}`)
+	fileURIPattern       = regexp.MustCompile(`"(?:fileUri|file_uri)"\s*:\s*("(?:[^"\\]|\\.)*")`)
+	imageMimeTypePattern = regexp.MustCompile(`"(?:mimeType|mime_type)"\s*:\s*"image/`)
 	// Markdown images inside a JSON string, where / and & may arrive escaped.
 	markdownImagePattern = regexp.MustCompile(`!\[[^\]"\n]*\]\((https?:(?:[^)\s"\\]|\\/|\\u[0-9a-fA-F]{4})+)\)`)
 	dataArrayPattern     = regexp.MustCompile(`"data"\s*:\s*\[`)
@@ -56,15 +65,39 @@ func rewriteJSONString(quoted []byte) ([]byte, bool) {
 	return encoded, err == nil
 }
 
+// rewriteQuotedLink rewrites the quoted link captured by pattern's first group,
+// keeping whatever follows it in the match.
+func rewriteQuotedLink(pattern *regexp.Regexp, m []byte) []byte {
+	sub := pattern.FindSubmatchIndex(m)
+	encoded, ok := rewriteJSONString(m[sub[2]:sub[3]])
+	if !ok {
+		return m
+	}
+	out := append([]byte(nil), m[:sub[2]]...)
+	out = append(out, encoded...)
+	return append(out, m[sub[3]:]...)
+}
+
 func rewriteLinks(body []byte) []byte {
 	if bytes.Contains(body, []byte(`"image_url"`)) {
 		body = imageURLPattern.ReplaceAllFunc(body, func(m []byte) []byte {
-			sub := imageURLPattern.FindSubmatchIndex(m)
-			encoded, ok := rewriteJSONString(m[sub[2]:sub[3]])
-			if !ok {
+			return rewriteQuotedLink(imageURLPattern, m)
+		})
+	}
+	if bytes.Contains(body, []byte(`"source"`)) && bytes.Contains(body, []byte(`"url"`)) {
+		body = claudeImageURLPattern.ReplaceAllFunc(body, func(m []byte) []byte {
+			return rewriteQuotedLink(claudeImageURLPattern, m)
+		})
+	}
+	if bytes.Contains(body, []byte(`"fileUri"`)) || bytes.Contains(body, []byte(`"file_uri"`)) {
+		body = fileDataPattern.ReplaceAllFunc(body, func(m []byte) []byte {
+			loc := fileURIPattern.FindSubmatchIndex(m)
+			if loc == nil || !imageMimeTypePattern.Match(m) || isGeminiFileHandle(m[loc[2]:loc[3]]) {
 				return m
 			}
-			return append(append([]byte(nil), m[:sub[2]]...), encoded...)
+			out := append([]byte(nil), m[:loc[0]]...)
+			out = append(out, rewriteQuotedLink(fileURIPattern, m[loc[0]:loc[1]])...)
+			return append(out, m[loc[1]:]...)
 		})
 	}
 	if bytes.Contains(body, []byte("](http")) {
@@ -84,6 +117,17 @@ func rewriteLinks(body []byte) []byte {
 		body = rewriteImageItemURLs(body)
 	}
 	return body
+}
+
+// isGeminiFileHandle reports a Files API URI, a handle clients pass back to Gemini
+// rather than a fetchable image.
+func isGeminiFileHandle(quoted []byte) bool {
+	var raw string
+	if json.Unmarshal(quoted, &raw) != nil {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	return err == nil && strings.EqualFold(parsed.Hostname(), "generativelanguage.googleapis.com")
 }
 
 type byteSpan struct{ start, end int }

@@ -264,7 +264,7 @@ func OaiStreamToJsonHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(http.StatusOK)
-	if _, werr := c.Writer.Write(body); werr != nil {
+	if _, werr := c.Writer.Write(service.MarkGeneratedMedia(c, body)); werr != nil {
 		logger.LogError(c, "force_upstream_stream: write response failed: "+werr.Error())
 	}
 
