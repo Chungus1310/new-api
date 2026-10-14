@@ -13,6 +13,12 @@ func SetVideoRouter(router *gin.Engine, engine *fuego.Engine) {
 	// GET /v1/videos/:task_id/content is registered by SetTaskPluginProtocolRouter,
 	// which carries prod's TokenOrUserAuth so the dashboard can still play video.
 
+	// Unauthenticated: the signed token is the capability.
+	mediaRouter := router.Group("/v1/media")
+	mediaRouter.Use(middleware.RouteTag("relay"))
+	mediaRouter.GET("/:token", controller.MediaLinkContent)
+	mediaRouter.HEAD("/:token", controller.MediaLinkContent)
+
 	// Task-plugin endpoint: plugin-backed channels answer /video/generations through
 	// the plugin dispatcher rather than a built-in adaptor.
 	videoSharedRouter := router.Group("/v1")
