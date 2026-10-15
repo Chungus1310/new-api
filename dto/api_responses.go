@@ -113,9 +113,10 @@ type CreditSummary struct {
 
 // PasskeyOptionsData is the response for passkey begin routes.
 type PasskeyOptionsData struct {
-	Options   any    `json:"options"`
-	FlowToken string `json:"flow_token,omitempty"`
-	ExpiresAt int64  `json:"expires_at,omitempty"`
+	Options   any      `json:"options"`
+	RPIDs     []string `json:"rp_ids,omitempty"`
+	FlowToken string   `json:"flow_token"`
+	ExpiresAt int64    `json:"expires_at"`
 }
 
 // PasskeyStatusData is the response for GET passkey status.

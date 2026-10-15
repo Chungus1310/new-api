@@ -25,16 +25,15 @@ func SetVideoRouter(router *gin.Engine, engine *fuego.Engine) {
 	videoSharedRouter.Use(middleware.RouteTag("relay"))
 	videoSharedRouter.Use(middleware.TokenAuth())
 	videoSharedRouter.Use(middleware.SystemPerformanceCheck())
-	videoSharedRouter.POST(
-		"/video/generations",
+	videoSubmit := dto.NewRouter(engine, videoSharedRouter.Group("",
 		middleware.PinTaskPluginEndpoint(),
 		middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()),
 		middleware.PrepareTaskPluginEndpoint(),
 		middleware.Distribute(),
-		func(c *gin.Context) {
-			controller.RelayTaskPluginEndpoint(c, controller.RelayTask)
-		},
-	)
+	), "Video", secToken())
+	videoSubmit.GinPost("/video/generations", func(c *gin.Context) {
+		controller.RelayTaskPluginEndpoint(c, controller.RelayTask)
+	}, dto.GinResp[dto.TaskResponseDoc]())
 
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))

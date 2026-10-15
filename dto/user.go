@@ -16,8 +16,8 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Username          string `json:"username"`
 	Password          string `json:"password"`
-	PasswordEncrypted string `json:"password_encrypted"`
-	EncryptionKeyID   string `json:"encryption_key_id"`
+	PasswordEncrypted string `json:"password_encrypted,omitempty"`
+	EncryptionKeyID   string `json:"encryption_key_id,omitempty"`
 }
 
 // TopUpRequest is the request body for POST /api/user/topup.

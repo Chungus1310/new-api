@@ -127,9 +127,9 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 
 		// Secure verification (stays as *gin.Context -- sessions)
 		verify := dto.NewRouter(engine, apiRouter.Group("", middleware.UserAuth(), middleware.CriticalRateLimit()), "Auth", secDashboard())
-		verify.GinPost("/verify", controller.UniversalVerify, dto.GinResp[dto.Response[dto.VerificationStatusResponse]]())
+		verify.GinPost("/verify", controller.UniversalVerify, dto.GinResp[dto.Response[dto.SecurityProof]](), dto.GinBody[dto.UniversalVerifyRequest]())
 		verifyMethods := dto.NewRouter(engine, apiRouter.Group("", middleware.UserAuth(), middleware.DisableCache()), "Auth", secDashboard())
-		verifyMethods.GinGet("/verify/methods", controller.GetVerificationMethods, dto.GinResp[dto.ApiResponse]())
+		verifyMethods.GinGet("/verify/methods", controller.GetVerificationMethods, option.Query("scope", "Step-up scope to list the verification methods for", fuego.ParamRequired()), dto.GinResp[dto.Response[dto.VerificationRequirements]]())
 
 		// ---- User routes ----
 		userGroup := apiRouter.Group("/user")
@@ -188,10 +188,10 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		accessTokenWrites.GinDelete("/:id", controller.DeleteAccessToken, option.Path("id", "Access token ID"), dto.GinResp[dto.ApiResponse]())
 		self.GinGet("/passkey", controller.PasskeyStatus, dto.GinResp[dto.Response[dto.PasskeyStatusData]]())
 		self.GinPost("/passkey/register/begin", controller.PasskeyRegisterBegin, dto.GinResp[dto.Response[dto.PasskeyOptionsData]]())
-		self.GinPost("/passkey/register/finish", controller.PasskeyRegisterFinish, dto.GinResp[dto.MessageResponse]())
-		self.GinPost("/passkey/verify/begin", controller.PasskeyVerifyBegin, dto.GinResp[dto.Response[dto.PasskeyOptionsData]]())
-		self.GinPost("/passkey/verify/finish", controller.PasskeyVerifyFinish, dto.GinResp[dto.MessageResponse]())
-		self.GinDelete("/passkey", controller.PasskeyDelete, dto.GinResp[dto.MessageResponse]())
+		self.GinPost("/passkey/register/finish", controller.PasskeyRegisterFinish, dto.GinResp[dto.Response[dto.AuthRotationData]](), dto.GinBody[dto.PasskeyFinishRequest]())
+		self.GinPost("/passkey/verify/begin", controller.PasskeyVerifyBegin, dto.GinResp[dto.Response[dto.PasskeyOptionsData]](), dto.GinBody[dto.PasskeyVerifyBeginRequest]())
+		self.GinPost("/passkey/verify/finish", controller.PasskeyVerifyFinish, dto.GinResp[dto.Response[dto.SecurityProof]](), dto.GinBody[dto.PasskeyFinishRequest]())
+		self.GinDelete("/passkey", controller.PasskeyDelete, dto.GinResp[dto.Response[dto.AuthRotationData]]())
 		self.GinGet("/sessions", controller.GetLoginSessions, dto.GinResp[dto.ApiResponse]())
 		self.GinPost("/sessions/revoke-others", controller.RevokeOtherLoginSessions, dto.GinResp[dto.ApiResponse]())
 		self.GinDelete("/sessions/:sid", controller.DeleteLoginSession, option.Path("sid", "Login session ID"), dto.GinResp[dto.ApiResponse]())
@@ -253,11 +253,11 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		// 2FA routes
 		self2FA := dto.NewRouter(engine, selfGroup.Group("", middleware.DisableCache()), "2FA", secDashboard())
 		self2FAEnroll := dto.NewRouter(engine, selfGroup.Group("", middleware.UserCriticalRateLimit("security-verification"), middleware.DisableCache()), "2FA", secDashboard())
-		self2FA.GinGet("/2fa/status", controller.Get2FAStatus, dto.GinResp[dto.ApiResponse]())
-		self2FAEnroll.GinPost("/2fa/setup", controller.Setup2FA, dto.GinResp[dto.ApiResponse]())
-		self2FAEnroll.GinPost("/2fa/enable", controller.Enable2FA, dto.GinResp[dto.ApiResponse]())
-		self2FA.GinPost("/2fa/disable", controller.Disable2FA, dto.GinResp[dto.ApiResponse]())
-		self2FA.GinPost("/2fa/backup_codes", controller.RegenerateBackupCodes, dto.GinResp[dto.ApiResponse]())
+		self2FA.GinGet("/2fa/status", controller.Get2FAStatus, dto.GinResp[dto.Response[dto.TwoFAStatusData]]())
+		self2FAEnroll.GinPost("/2fa/setup", controller.Setup2FA, dto.GinResp[dto.Response[dto.Setup2FAResponse]]())
+		self2FAEnroll.GinPost("/2fa/enable", controller.Enable2FA, dto.GinResp[dto.Response[dto.AuthRotationData]](), dto.GinBody[dto.Verify2FARequest]())
+		self2FA.GinPost("/2fa/disable", controller.Disable2FA, dto.GinResp[dto.Response[dto.AuthRotationData]]())
+		self2FA.GinPost("/2fa/backup_codes", controller.RegenerateBackupCodes, dto.GinResp[dto.Response[dto.BackupCodesData]]())
 
 		// Check-in routes
 		selfCheckin := dto.NewRouter(engine, selfGroup, "Checkin", secDashboard())
