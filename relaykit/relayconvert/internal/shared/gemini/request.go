@@ -216,6 +216,10 @@ func ApplyThinkingConfig(ctx context.Context, geminiRequest *dto.GeminiChatReque
 		opts.Gemini.DefaultReasoningEffort != "" &&
 		reasoning.GeminiSupportsThoughtVisibility(baseModel) {
 		requested.Effort = reasoning.Effort(opts.Gemini.DefaultReasoningEffort)
+		// Gemini 4 does not think at all below high, so a lower default hides its thinking entirely.
+		if strings.HasPrefix(strings.ToLower(baseModel), "gemini-4") {
+			requested.Effort = reasoning.EffortHigh
+		}
 		requested.Source = reasoning.SourceDefault
 	}
 	requested = reasoning.ResolveGeminiEnabledDefault(baseModel, requested, geminiRequest.GenerationConfig.MaxOutputTokens)
