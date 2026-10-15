@@ -174,7 +174,7 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 		midjourneyTask.ImageUrl = service.MarkGeneratedMediaLink(c, originTask.ImageUrl)
 	}
 	if originTask.VideoUrl != "" {
-		midjourneyTask.VideoUrl = originTask.VideoUrl
+		midjourneyTask.VideoUrl = service.MarkGeneratedMediaLink(c, originTask.VideoUrl)
 	}
 	midjourneyTask.Status = originTask.Status
 	midjourneyTask.FailReason = originTask.FailReason
@@ -192,6 +192,9 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 		var videoUrls []dto.ImgUrls
 		err := common.Unmarshal([]byte(originTask.VideoUrls), &videoUrls)
 		if err == nil {
+			for i := range videoUrls {
+				videoUrls[i].Url = service.MarkGeneratedMediaLink(c, videoUrls[i].Url)
+			}
 			midjourneyTask.VideoUrls = videoUrls
 		}
 	}

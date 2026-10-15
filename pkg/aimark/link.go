@@ -46,6 +46,44 @@ func RewriteLink(rawURL string) string {
 	return rawURL
 }
 
+// RewriteLinksIn swaps every JSON string in body that equals one of rawURLs for its
+// LinkRewriter URL, matching the string however an encoder escaped it.
+func RewriteLinksIn(body []byte, rawURLs []string) []byte {
+	for _, rawURL := range rawURLs {
+		rewritten := RewriteLink(rawURL)
+		if rewritten == rawURL {
+			continue
+		}
+		replacement, err := json.Marshal(rewritten)
+		if err != nil {
+			continue
+		}
+		for _, quoted := range quotedJSONForms(rawURL) {
+			body = bytes.ReplaceAll(body, quoted, replacement)
+		}
+	}
+	return body
+}
+
+func quotedJSONForms(s string) [][]byte {
+	var forms [][]byte
+	for _, escapeHTML := range []bool{true, false} {
+		var buf bytes.Buffer
+		encoder := json.NewEncoder(&buf)
+		encoder.SetEscapeHTML(escapeHTML)
+		if encoder.Encode(s) != nil {
+			continue
+		}
+		quoted := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+		for _, form := range [][]byte{quoted, bytes.ReplaceAll(quoted, []byte("/"), []byte(`\/`))} {
+			if !slices.ContainsFunc(forms, func(f []byte) bool { return bytes.Equal(f, form) }) {
+				forms = append(forms, form)
+			}
+		}
+	}
+	return forms
+}
+
 func isHTTPURL(s string) bool {
 	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
 }

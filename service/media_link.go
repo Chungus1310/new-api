@@ -91,12 +91,21 @@ func FlushGeneratedStreamEvents(c *gin.Context) []aimark.StreamEvent {
 	return events
 }
 
-// MarkGeneratedMediaLink wraps one image link in a signed media link.
+// MarkGeneratedMediaLink wraps one image or MP4 video link in a signed media link.
 func MarkGeneratedMediaLink(c *gin.Context, rawURL string) string {
 	if !wrapMediaLinks(c) {
 		return rawURL
 	}
 	return aimark.RewriteLink(rawURL)
+}
+
+// MarkGeneratedMediaLinksIn wraps every JSON string in body that equals one of
+// rawURLs, leaving the rest of the body untouched.
+func MarkGeneratedMediaLinksIn(c *gin.Context, body []byte, rawURLs []string) []byte {
+	if !wrapMediaLinks(c) {
+		return body
+	}
+	return aimark.RewriteLinksIn(body, rawURLs)
 }
 
 func signMediaLink(payload []byte) []byte {
