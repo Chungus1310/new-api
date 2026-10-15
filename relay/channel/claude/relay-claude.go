@@ -711,7 +711,7 @@ func sendGeminiStreamResults(c *gin.Context, results []relayconvert.ResponseResu
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(service.MarkGeneratedMedia(c, data))})
+		helper.RenderMarkedEvent(c, "", data)
 		_ = helper.FlushWriter(c)
 	}
 	return nil

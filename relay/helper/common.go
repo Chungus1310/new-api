@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -86,8 +87,7 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	if err != nil {
 		common.SysError(common.LogText("error marshalling stream response: %s", err.Error()))
 	} else {
-		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(service.MarkGeneratedMedia(c, jsonData))})
+		RenderMarkedEvent(c, resp.Type, jsonData)
 	}
 	_ = FlushWriter(c)
 	return nil
@@ -98,8 +98,7 @@ func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
 		return
 	}
 
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", service.MarkGeneratedMediaString(c, data))})
+	RenderMarkedEvent(c, resp.Type, []byte(data))
 	_ = FlushWriter(c)
 }
 
@@ -122,8 +121,36 @@ func StringData(c *gin.Context, str string) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	c.Render(-1, common.CustomEvent{Data: "data: " + service.MarkGeneratedMediaString(c, str)})
+	RenderMarkedEvent(c, "", []byte(str))
 	return FlushWriter(c)
+}
+
+// RenderMarkedEvent writes one SSE event with its generated media marked, after
+// any held image link text the event releases.
+func RenderMarkedEvent(c *gin.Context, eventType string, data []byte) {
+	events := service.MarkGeneratedStreamEvent(c, data)
+	events[len(events)-1].Type = eventType
+	renderStreamEvents(c, events)
+}
+
+// FlushMarkedEvents writes the image link text still held at the end of a stream.
+func FlushMarkedEvents(c *gin.Context) {
+	if c == nil || c.Writer == nil || requestContextDone(c) {
+		return
+	}
+	if events := service.FlushGeneratedStreamEvents(c); len(events) > 0 {
+		renderStreamEvents(c, events)
+		_ = FlushWriter(c)
+	}
+}
+
+func renderStreamEvents(c *gin.Context, events []aimark.StreamEvent) {
+	for _, event := range events {
+		if event.Type != "" {
+			c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", event.Type)})
+		}
+		c.Render(-1, common.CustomEvent{Data: "data: " + string(event.Data)})
+	}
 }
 
 func PingData(c *gin.Context) error {

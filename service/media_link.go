@@ -50,6 +50,47 @@ func MarkGeneratedMediaString(c *gin.Context, s string) string {
 	return aimark.RewriteString(s, wrapMediaLinks(c))
 }
 
+const streamCarryKey = "aimark_stream_carry"
+
+// MarkGeneratedStreamEvent marks one stream event payload. Image links that
+// arrive split over several text deltas are held back until complete, so the
+// result may start with earlier held text released as events of their own; the
+// last element is always this event.
+func MarkGeneratedStreamEvent(c *gin.Context, data []byte) []aimark.StreamEvent {
+	if c == nil {
+		return []aimark.StreamEvent{{Data: MarkGeneratedMedia(c, data)}}
+	}
+	value, _ := c.Get(streamCarryKey)
+	carry, _ := value.(*aimark.StreamCarry)
+	if carry == nil {
+		carry = &aimark.StreamCarry{}
+		c.Set(streamCarryKey, carry)
+	}
+	events := carry.Process(data)
+	for i := range events {
+		events[i].Data = MarkGeneratedMedia(c, events[i].Data)
+	}
+	return events
+}
+
+// FlushGeneratedStreamEvents releases the text MarkGeneratedStreamEvent still
+// holds, for the end of a stream.
+func FlushGeneratedStreamEvents(c *gin.Context) []aimark.StreamEvent {
+	if c == nil {
+		return nil
+	}
+	value, _ := c.Get(streamCarryKey)
+	carry, _ := value.(*aimark.StreamCarry)
+	if carry == nil {
+		return nil
+	}
+	events := carry.Flush()
+	for i := range events {
+		events[i].Data = MarkGeneratedMedia(c, events[i].Data)
+	}
+	return events
+}
+
 // MarkGeneratedMediaLink wraps one image link in a signed media link.
 func MarkGeneratedMediaLink(c *gin.Context, rawURL string) string {
 	if !wrapMediaLinks(c) {
