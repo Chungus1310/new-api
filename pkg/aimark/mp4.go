@@ -3,6 +3,8 @@ package aimark
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"io"
 	"math"
 )
 
@@ -133,4 +135,35 @@ func markMP4(file []byte) ([]byte, bool) {
 	out := make([]byte, 0, len(file)+len(box))
 	out = append(out, file...)
 	return append(out, box...), true
+}
+
+// A largesize header with a uuid extended type.
+const mp4MaxHeaderLength = 32
+
+// ScanMP4 decides ShouldAppend for a file of the given size by reading only its
+// top-level box headers through readAt, so box bodies are never downloaded.
+// It gives up with an error after maxReads reads.
+func ScanMP4(size int64, maxReads int, readAt func(off int64, n int) ([]byte, error)) (bool, error) {
+	if size <= 0 {
+		return false, nil
+	}
+	var tracker MP4Tracker
+	for reads := 0; !tracker.done && tracker.pos < uint64(size); reads++ {
+		if reads >= maxReads {
+			return false, errors.New("too many MP4 boxes")
+		}
+		want := min(mp4MaxHeaderLength, size-int64(tracker.pos))
+		chunk, err := readAt(int64(tracker.pos), int(want))
+		if err != nil {
+			return false, err
+		}
+		if len(chunk) == 0 {
+			return false, io.ErrUnexpectedEOF
+		}
+		_, _ = tracker.Write(chunk)
+		if len(tracker.header) == 0 && tracker.pos < tracker.next {
+			tracker.pos = min(tracker.next, uint64(size))
+		}
+	}
+	return tracker.ShouldAppend(), nil
 }

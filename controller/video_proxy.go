@@ -311,6 +311,13 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		client = http.DefaultClient
 	}
 
+	if method != http.MethodPost && descriptor.Body == nil && c.Request.Header.Get("Range") != "" {
+		key := "task\x00" + task.TaskID + "\x00" + c.Request.URL.Path + "?" + c.Request.URL.RawQuery
+		if serveMarkedMP4Range(c, key, taskMediaRangeFetcher(c, client, proxy, parsedURL.String(), descriptor)) {
+			return nil
+		}
+	}
+
 	req, err := http.NewRequestWithContext(c.Request.Context(), method, parsedURL.String(), bytes.NewReader(descriptor.Body))
 	if err != nil {
 		return &taskMediaProxyError{
@@ -437,6 +444,31 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 			status: http.StatusBadGateway, code: "artifact_upstream_error",
 			message: fmt.Sprintf("Artifact upstream returned status %d", resp.StatusCode),
 		}
+	}
+}
+
+func taskMediaRangeFetcher(c *gin.Context, client *http.Client, proxy, rawURL string, descriptor *relaychannel.TaskContentRequest) mp4RangeFetcher {
+	return func(ctx context.Context, rangeHeader, ifRange string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := applyTaskMediaRequestHeaders(req.Header, descriptor.Headers); err != nil {
+			return nil, err
+		}
+		for _, name := range []string{"If-Range", "If-None-Match", "If-Modified-Since"} {
+			req.Header.Del(name)
+		}
+		rangeHeaders := map[string]string{"Range": rangeHeader}
+		if ifRange != "" {
+			rangeHeaders["If-Range"] = ifRange
+		}
+		for name, value := range rangeHeaders {
+			req.Header.Set(name, value)
+		}
+		redirectClient := *taskMediaRedirectClient(client, proxy, c, rangeHeaders, descriptor.Credentialless)
+		redirectClient.Timeout = 0
+		return doTaskMediaRequest(&redirectClient, req, taskMediaResponseHeaderTimeout)
 	}
 }
 

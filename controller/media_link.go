@@ -37,8 +37,24 @@ func copyMarkedMP4(w io.Writer, body io.Reader) error {
 	return err
 }
 
-// MediaLinkContent serves an upstream image behind a signed media link with the
-// AI-generated mark. Whenever that is not possible it redirects to the upstream URL.
+func mediaLinkRangeFetcher(rawURL string) mp4RangeFetcher {
+	return func(ctx context.Context, rangeHeader, ifRange string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Range", rangeHeader)
+		if ifRange != "" {
+			req.Header.Set("If-Range", ifRange)
+		}
+		client := *service.GetSSRFProtectedHTTPClient()
+		client.Timeout = 0
+		return doTaskMediaRequest(&client, req, mediaLinkHeaderTimeout)
+	}
+}
+
+// MediaLinkContent serves an upstream image or MP4 video behind a signed media link
+// with the AI-generated mark. Whenever that is not possible it redirects to the upstream URL.
 func MediaLinkContent(c *gin.Context) {
 	rawURL, err := service.VerifyMediaLink(c.Param("token"))
 	if err != nil {
@@ -54,14 +70,18 @@ func MediaLinkContent(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
 		c.Redirect(http.StatusFound, rawURL)
 	}
-	// Safari probes with bytes=0-1 and needs a 206, which a marked body cannot give.
-	if c.Request.Header.Get("Range") != "" && !isOpenRangeFromStart(c.Request) {
-		fallback()
-		return
-	}
 	if service.ValidateSSRFProtectedFetchURL(rawURL) != nil {
 		fallback()
 		return
+	}
+	if c.Request.Header.Get("Range") != "" {
+		if serveMarkedMP4Range(c, "media\x00"+rawURL, mediaLinkRangeFetcher(rawURL)) {
+			return
+		}
+		if !isOpenRangeFromStart(c.Request) {
+			fallback()
+			return
+		}
 	}
 
 	ctx, cancel := context.WithCancel(c.Request.Context())
