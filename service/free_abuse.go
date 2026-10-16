@@ -134,13 +134,14 @@ func TrackFreeModelError(userId int, userQuota int, modelName string, isMedia bo
 
 // FreeUserVerified reports whether anything beyond a password stands behind the
 // account: a third-party login, money that was ever spent (a top-up or a granted
-// reward, since free models consume nothing), or an email while email
-// verification is on (so the address was proven, not typed). Every account farm
+// reward, since free models consume nothing), or an email at a mainstream
+// provider while email verification is on (farms verify throwaway inboxes on
+// their own domains just as easily). Every account farm
 // seen so far had none of these, while 61% of ordinary signups bind a login, so
 // the unverified thresholds below can sit well under the ordinary ones without
 // touching most real users.
 func FreeUserVerified(hasIdentity bool, usedQuota int, email string) bool {
-	return hasIdentity || usedQuota > 0 || (email != "" && common.EmailVerificationEnabled)
+	return hasIdentity || usedQuota > 0 || (common.EmailVerificationEnabled && common.MainstreamEmailDomain(email))
 }
 
 // freeAbuseScale returns the threshold scaler for this account: identity at 100%,

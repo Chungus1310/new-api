@@ -549,7 +549,21 @@ func handleOAuthBind(c *gin.Context, providerName string, provider oauth.Provide
 		writeSecurityOperationError(c, err)
 		return false
 	}
-	model.LiftShadowBan(userId, "linked "+provider.GetName())
+	// A login that does not vouch for a person (see model.identityVouched) leaves the ban in place.
+	if provider.ProviderUserIDColumn() == "github_id" {
+		tooNew := gitHubAccountTooNew(oauthUser)
+		if setting, settingErr := model.GetUserSetting(userId, true); settingErr == nil && setting.UnvouchedGitHub != tooNew {
+			setting.UnvouchedGitHub = tooNew
+			if err := model.UpdateUserSetting(userId, setting); err != nil {
+				common.SysError(common.LogText("[OAuth] failed to record GitHub account age for user %d: %s", userId, err.Error()))
+			}
+		}
+		if !tooNew {
+			model.LiftShadowBan(userId, "linked "+provider.GetName())
+		}
+	} else if provider.ProviderUserIDColumn() != "google_id" || common.MainstreamEmailDomain(oauthUser.Email) {
+		model.LiftShadowBan(userId, "linked "+provider.GetName())
+	}
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
 		writeSecurityOperationError(c, err)
@@ -584,6 +598,15 @@ func backfillOAuthEmail(user *model.User, oauthUser *oauth.OAuthUser) {
 		return
 	}
 	user.Email = email
+}
+
+// gitHubMinAccountAge is how old a GitHub account must be to count as identity.
+const gitHubMinAccountAge = 30 * 24 * time.Hour
+
+// gitHubAccountTooNew reads the account creation date only GitHub reports.
+func gitHubAccountTooNew(oauthUser *oauth.OAuthUser) bool {
+	created, ok := oauthUser.Extra["account_created_at"].(int64)
+	return ok && created > 0 && time.Since(time.Unix(created, 0)) < gitHubMinAccountAge
 }
 
 // findOrCreateOAuthUser finds the existing user or creates a new one. For a
@@ -713,6 +736,11 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
+	if gitHubAccountTooNew(oauthUser) {
+		setting := user.GetSetting()
+		setting.UnvouchedGitHub = true
+		user.SetSetting(setting)
+	}
 	user.RegisterIp = registerIp
 	user.RegisterIpHash = common.RegisterIpHash(registerIp)
 	if model.IsValidCustomerType(customerType) {

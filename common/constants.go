@@ -128,6 +128,27 @@ var EmailDomainWhitelist = []string{
 	"yahoo.com",
 	"foxmail.com",
 }
+
+// MainstreamEmailDomain reports whether an address sits at a provider that makes
+// accounts costly to mass-produce. Anyone can register a Google account under an
+// address at a throwaway or catch-all domain, so only these vouch for a person.
+func MainstreamEmailDomain(email string) bool {
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false
+	}
+	domain := strings.ToLower(strings.TrimSpace(email[at+1:]))
+	if domain == "googlemail.com" {
+		return true
+	}
+	for _, allowed := range EmailDomainWhitelist {
+		if strings.ToLower(strings.TrimSpace(allowed)) == domain {
+			return true
+		}
+	}
+	return false
+}
+
 var EmailLoginAuthServerList = []string{
 	"smtp.sendcloud.net",
 	"smtp.azurecomm.net",
