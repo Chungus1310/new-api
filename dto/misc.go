@@ -7,29 +7,31 @@ type TestStatusData struct {
 
 // StatusData is the response data for GET /api/status.
 type StatusData struct {
-	Version                    string      `json:"version"`
-	StartTime                  int64       `json:"start_time"`
-	EmailVerification          bool        `json:"email_verification"`
-	GitHubOAuth                bool        `json:"github_oauth"`
-	GitHubClientId             string      `json:"github_client_id"`
-	DiscordOAuth               bool        `json:"discord_oauth"`
-	DiscordClientId            string      `json:"discord_client_id"`
-	GoogleOAuth                bool        `json:"google_oauth"`
-	GoogleClientId             string      `json:"google_client_id"`
-	LinuxDOOAuth               bool        `json:"linuxdo_oauth"`
-	LinuxDOClientId            string      `json:"linuxdo_client_id"`
-	LinuxDOMinimumTrustLevel   int         `json:"linuxdo_minimum_trust_level"`
-	TelegramOAuth              bool        `json:"telegram_oauth"`
-	TelegramOAuthConfigured    bool        `json:"telegram_oauth_configured"`
-	TelegramBotName            string      `json:"telegram_bot_name"`
-	Theme                      string      `json:"theme"`
-	SystemName                 string      `json:"system_name"`
-	Logo                       string      `json:"logo"`
-	FooterHtml                 string      `json:"footer_html"`
-	WeChatQrcode               string      `json:"wechat_qrcode"`
-	WeChatLogin                bool        `json:"wechat_login"`
-	ServerAddress              string      `json:"server_address"`
-	TurnstileCheck             bool        `json:"turnstile_check"`
+	Version                  string `json:"version"`
+	StartTime                int64  `json:"start_time"`
+	EmailVerification        bool   `json:"email_verification"`
+	GitHubOAuth              bool   `json:"github_oauth"`
+	GitHubClientId           string `json:"github_client_id"`
+	DiscordOAuth             bool   `json:"discord_oauth"`
+	DiscordClientId          string `json:"discord_client_id"`
+	GoogleOAuth              bool   `json:"google_oauth"`
+	GoogleClientId           string `json:"google_client_id"`
+	LinuxDOOAuth             bool   `json:"linuxdo_oauth"`
+	LinuxDOClientId          string `json:"linuxdo_client_id"`
+	LinuxDOMinimumTrustLevel int    `json:"linuxdo_minimum_trust_level"`
+	TelegramOAuth            bool   `json:"telegram_oauth"`
+	TelegramOAuthConfigured  bool   `json:"telegram_oauth_configured"`
+	TelegramBotName          string `json:"telegram_bot_name"`
+	Theme                    string `json:"theme"`
+	SystemName               string `json:"system_name"`
+	Logo                     string `json:"logo"`
+	FooterHtml               string `json:"footer_html"`
+	WeChatQrcode             string `json:"wechat_qrcode"`
+	WeChatLogin              bool   `json:"wechat_login"`
+	ServerAddress            string `json:"server_address"`
+	TurnstileCheck           bool   `json:"turnstile_check"`
+	// Free models need a recorded consent; the chat BFF applies the same switch to guests.
+	FreeConsentEnforced        bool        `json:"free_consent_enforced"`
 	TurnstileSiteKey           string      `json:"turnstile_site_key"`
 	TopUpLink                  string      `json:"top_up_link"`
 	DocsLink                   string      `json:"docs_link"`

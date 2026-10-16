@@ -62,6 +62,7 @@ func GetStatus(c fuego.ContextNoBody) (*dto.Response[dto.StatusData], error) {
 		WeChatLogin:              common.WeChatAuthEnabled,
 		ServerAddress:            system_setting.ServerAddress,
 		TurnstileCheck:           common.TurnstileCheckEnabled,
+		FreeConsentEnforced:      common.FreeConsentEnforcementEnabled,
 		TurnstileSiteKey:         common.TurnstileSiteKey,
 		TopUpLink:                common.TopUpLink,
 		DocsLink:                 operation_setting.GetGeneralSetting().DocsLink,
