@@ -146,3 +146,25 @@ func RevokeFreeConsent(userId int, guestId string, modelName string) error {
 	freeConsentCache.Delete(freeConsentSubject(userId, guestId))
 	return err
 }
+
+// freeConsentProofYears is how long a consent record outlives the consent, as
+// the privacy policy states, so it can still be proven.
+const freeConsentProofYears = 3
+
+// A guest id lives in a one-year cookie set before any consent, so a guest's
+// consent ends at the latest a year after it was given.
+const guestIdLifetime = 365 * 24 * time.Hour
+
+// PruneFreeConsents deletes records whose consent ended more than three years
+// ago: revoked, the account deleted, or the guest cookie expired.
+func PruneFreeConsents(now time.Time) (int64, error) {
+	cutoff := now.AddDate(-freeConsentProofYears, 0, 0)
+	res := DB.Where(
+		"(revoked_at > 0 AND revoked_at < ?)"+
+			" OR (revoked_at = 0 AND guest_id <> '' AND created_at < ?)"+
+			" OR (revoked_at = 0 AND user_id > 0 AND user_id IN (SELECT id FROM users WHERE deleted_at IS NOT NULL AND deleted_at < ?))"+
+			" OR (revoked_at = 0 AND user_id > 0 AND created_at < ? AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = free_consents.user_id))",
+		cutoff.Unix(), cutoff.Add(-guestIdLifetime).Unix(), cutoff, cutoff.Unix(),
+	).Delete(&FreeConsent{})
+	return res.RowsAffected, res.Error
+}
