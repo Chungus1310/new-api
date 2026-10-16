@@ -249,7 +249,14 @@ func perModelRateLimit(c *gin.Context) bool {
 		return true
 	}
 	var mr ModelRequest
-	if err := common.UnmarshalBodyReusable(c, &mr); err != nil || mr.Model == "" {
+	// Gemini native routes carry the model in the URL, not the body; reading only the
+	// body let every /v1beta/models/<id>:generateContent call skip the limit.
+	if p := c.Request.URL.Path; strings.HasPrefix(p, "/v1beta/models/") || strings.HasPrefix(p, "/v1/models/") {
+		mr.Model = extractModelNameFromGeminiPath(p)
+	} else if err := common.UnmarshalBodyReusable(c, &mr); err != nil {
+		return true
+	}
+	if mr.Model == "" {
 		return true
 	}
 	_, successMaxCount, windowMinutes, found := setting.GetModelRateLimit(mr.Model)
