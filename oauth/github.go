@@ -34,6 +34,8 @@ type gitHubUser struct {
 	Login string `json:"login"` // GitHub username (can be changed by user)
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// CreatedAt dates the GitHub account itself; farms bind ones made that day.
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type gitHubEmail struct {
@@ -208,7 +210,8 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 		DisplayName:    githubUser.Name,
 		Email:          email,
 		Extra: map[string]any{
-			"legacy_id": githubUser.Login, // Store login for migration from old accounts
+			"legacy_id":          githubUser.Login, // Store login for migration from old accounts
+			"account_created_at": githubUser.CreatedAt.Unix(),
 		},
 	}, nil
 }
