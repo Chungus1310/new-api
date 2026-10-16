@@ -167,6 +167,84 @@ var (
 // connections (2026-10-16, ~140 concurrent copies).
 var rankingBuilds singleflight.Group
 
+type rankingScanItem struct {
+	expiresAt time.Time
+	data      any
+}
+
+var (
+	rankingScanMu sync.Mutex
+	rankingScans  = map[string]rankingScanItem{}
+	// Every model page needs the all-model totals, so distinct keys still added up
+	// to hundreds of full quota_data scans; one slot keeps it to one per replica.
+	rankingScanSlot = make(chan struct{}, 1)
+)
+
+// rankingScan serves an all-model aggregation from memory. An expired value keeps
+// serving while a single background rebuild runs, so expiry never blocks callers.
+func rankingScan[T any](key string, ttl time.Duration, scan func() (T, error)) (T, error) {
+	var zero T
+	rankingScanMu.Lock()
+	item, cached := rankingScans[key]
+	rankingScanMu.Unlock()
+	if cached && time.Now().Before(item.expiresAt) {
+		if data, ok := item.data.(T); ok {
+			return data, nil
+		}
+	}
+	rebuild := func() (any, error) {
+		rankingScanSlot <- struct{}{}
+		defer func() { <-rankingScanSlot }()
+		data, err := scan()
+		if err != nil {
+			return nil, err
+		}
+		rankingScanMu.Lock()
+		rankingScans[key] = rankingScanItem{expiresAt: time.Now().Add(ttl), data: data}
+		rankingScanMu.Unlock()
+		return data, nil
+	}
+	if stale, ok := item.data.(T); cached && ok {
+		go rankingBuilds.Do("scan|"+key, rebuild)
+		return stale, nil
+	}
+	built, err, _ := rankingBuilds.Do("scan|"+key, rebuild)
+	if err != nil {
+		return zero, err
+	}
+	data, ok := built.(T)
+	if !ok {
+		return zero, fmt.Errorf("unexpected ranking scan result %T", built)
+	}
+	return data, nil
+}
+
+func rankingScanTTL(config rankingPeriodConfig) time.Duration {
+	if config.id == "today" {
+		return rankingCacheTTL
+	}
+	return 30 * time.Minute
+}
+
+func rankingTotals(config rankingPeriodConfig, now time.Time, previous bool) ([]model.RankingQuotaTotal, error) {
+	startTime, endTime := rankingTimeRange(config, now)
+	key := "totals|" + config.id
+	if previous {
+		startTime, endTime = previousRankingTimeRange(config, startTime)
+		key += "|previous"
+	}
+	return rankingScan(key, rankingScanTTL(config), func() ([]model.RankingQuotaTotal, error) {
+		return model.GetRankingQuotaTotals(startTime, endTime)
+	})
+}
+
+func rankingBuckets(config rankingPeriodConfig, now time.Time) ([]model.RankingQuotaBucket, error) {
+	startTime, endTime := rankingTimeRange(config, now)
+	return rankingScan("buckets|"+config.id, rankingScanTTL(config), func() ([]model.RankingQuotaBucket, error) {
+		return model.GetRankingQuotaBuckets(startTime, endTime, config.bucketSize)
+	})
+}
+
 func GetModelRankingSnapshot(modelName string, period string) (*ModelRankingResponse, error) {
 	config, err := rankingConfig(period)
 	if err != nil {
@@ -205,7 +283,7 @@ func GetModelRankingSnapshot(modelName string, period string) (*ModelRankingResp
 
 func buildModelRankingSnapshot(modelName string, config rankingPeriodConfig, now time.Time) (*ModelRankingResponse, error) {
 	startTime, endTime := rankingTimeRange(config, now)
-	currentTotals, err := model.GetRankingQuotaTotals(startTime, endTime)
+	currentTotals, err := rankingTotals(config, now, false)
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +305,7 @@ func buildModelRankingSnapshot(modelName string, config rankingPeriodConfig, now
 	}
 
 	if config.hasPrevious {
-		previousStart, previousEnd := previousRankingTimeRange(config, startTime)
-		previousTotals, err := model.GetRankingQuotaTotals(previousStart, previousEnd)
+		previousTotals, err := rankingTotals(config, now, true)
 		if err != nil {
 			return nil, err
 		}
@@ -301,20 +378,18 @@ func rankingConfig(period string) (rankingPeriodConfig, error) {
 }
 
 func buildRankingsSnapshot(config rankingPeriodConfig, now time.Time) (*RankingsResponse, error) {
-	startTime, endTime := rankingTimeRange(config, now)
-	currentTotals, err := model.GetRankingQuotaTotals(startTime, endTime)
+	currentTotals, err := rankingTotals(config, now, false)
 	if err != nil {
 		return nil, err
 	}
-	currentBuckets, err := model.GetRankingQuotaBuckets(startTime, endTime, config.bucketSize)
+	currentBuckets, err := rankingBuckets(config, now)
 	if err != nil {
 		return nil, err
 	}
 
 	var previousTotals []model.RankingQuotaTotal
 	if config.hasPrevious {
-		previousStart, previousEnd := previousRankingTimeRange(config, startTime)
-		previousTotals, err = model.GetRankingQuotaTotals(previousStart, previousEnd)
+		previousTotals, err = rankingTotals(config, now, true)
 		if err != nil {
 			return nil, err
 		}
