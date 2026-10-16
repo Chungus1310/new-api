@@ -20,6 +20,11 @@ func fuegoBind[B, P any](c *gin.Context, body B, params P) *fuego.MockContext[B,
 	for _, param := range c.Params {
 		ctx.PathParams[param.Key] = param.Value
 	}
+	if c.Request != nil && c.Request.URL != nil {
+		for name, values := range c.Request.URL.Query() {
+			ctx.UrlValues[name] = values
+		}
+	}
 	return ctx
 }
 

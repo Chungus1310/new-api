@@ -91,6 +91,9 @@ func GetUserFlowQuotaDates(c fuego.ContextWithParams[dto.GetFlowQuotaDatesParams
 	if p.EndTimestamp-p.StartTimestamp > maxQuotaDateSpan {
 		return dto.Fail[[]*model.FlowQuotaData]("Time span cannot exceed 10 years")
 	}
+	if _, err := limitLogTimeRange(p.StartTimestamp, p.EndTimestamp); err != nil {
+		return dto.Fail[[]*model.FlowQuotaData](err.Error())
+	}
 	dates, err := model.GetFlowQuotaData(p.StartTimestamp, p.EndTimestamp, "", dto.UserID(c), common.RoleCommonUser)
 	if err != nil {
 		return dto.Fail[[]*model.FlowQuotaData](err.Error())
@@ -110,7 +113,11 @@ func GetUserQuotaDates(c fuego.ContextWithParams[dto.GetUserQuotaDatesParams]) (
 	if p.EndTimestamp-p.StartTimestamp > maxQuotaDateSpan {
 		return dto.Fail[[]*model.QuotaData]("Time span cannot exceed 10 years")
 	}
-	dates, err := model.GetQuotaDataByUserId(userId, p.StartTimestamp, p.EndTimestamp)
+	startTimestamp, err := limitLogTimeRange(p.StartTimestamp, p.EndTimestamp)
+	if err != nil {
+		return dto.Fail[[]*model.QuotaData](err.Error())
+	}
+	dates, err := model.GetQuotaDataByUserId(userId, startTimestamp, p.EndTimestamp)
 	if err != nil {
 		return dto.Fail[[]*model.QuotaData](err.Error())
 	}

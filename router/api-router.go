@@ -587,10 +587,14 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		dto.GetP(logMod, "/stat", controller.GetLogsStat)
 		dto.GetP(logMod, "/channel_affinity_usage_cache", controller.GetChannelAffinityUsageCacheStats)
 		dto.Get(logMod, "/search", controller.SearchAllLogs)
+		// Moderators read every log, so they export too; a bulk dump never runs on a PAT.
+		logExport := dto.NewRouter(engine, logGroup.Group("", middleware.ModAuth(), middleware.NoPAT()), "Log", secDashboard())
+		logExport.GinGet("/export", controller.ExportAllLogs, dto.GinResp[dto.ApiResponse]())
 
 		logUser := dto.NewRouter(engine, logGroup.Group("", middleware.UserAuth()), "Log", secDashboard())
 		dto.GetP(logUser, "/self/stat", controller.GetLogsSelfStat)
 		dto.GetP(logUser, "/self", controller.GetUserLogs, dto.PageParams())
+		logUser.GinGet("/self/export", controller.ExportUserLogs, dto.GinResp[dto.ApiResponse]())
 
 		logUserSearch := dto.NewRouter(engine, logGroup.Group("", middleware.UserAuth(), middleware.SearchRateLimit()), "Log", secDashboard())
 		dto.Get(logUserSearch, "/self/search", controller.SearchUserLogs)

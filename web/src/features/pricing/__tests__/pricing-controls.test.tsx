@@ -193,9 +193,9 @@ describe('pricing controls', () => {
     render(<PricingToolbar {...props} />)
     await user.click(screen.getByRole('button', { name: 'Name' }))
     await user.click(
-      screen.getByRole('menuitem', { name: 'Price: Low to High' })
+      screen.getByRole('menuitem', { name: 'Input Price: Low to High' })
     )
-    expect(props.onSortChange).toHaveBeenCalledWith('price-low')
+    expect(props.onSortChange).toHaveBeenCalledWith('input-price-low')
   })
 
   // Prod's sidebar renders groups with its own online/offline markers; the

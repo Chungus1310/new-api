@@ -115,6 +115,8 @@ func GetStatus(c fuego.ContextNoBody) (*dto.Response[dto.StatusData], error) {
 		CheckinEnabled:            operation_setting.GetCheckinSetting().Enabled,
 		PasswordLoginEnabled:      common.PasswordLoginEnabled,
 		PasswordRegisterEnabled:   common.PasswordRegisterEnabled,
+		LogExportEnabled:          operation_setting.GetLogSetting().UserExportEnabled,
+		LogMaxRangeDays:           operation_setting.GetLogSetting().MaxRangeDays,
 		QN:                        "new-api",
 	}
 

@@ -639,89 +639,108 @@ func looksLikeDiscordSnowflake(s string) bool {
 	return true
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, discordId string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, subscriptionPlan string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB
-	} else {
-		tx = LOG_DB.Where("logs.type = ?", logType)
-	}
+// LogFilter is the usage-log search shared by the log list and the log export.
+// Username, DiscordId and Channel are administrator filters.
+type LogFilter struct {
+	Type              int
+	StartTimestamp    int64
+	EndTimestamp      int64
+	ModelName         string
+	Username          string
+	DiscordId         string
+	TokenName         string
+	Channel           int
+	Group             string
+	RequestId         string
+	UpstreamRequestId string
+	SubscriptionPlan  string
+}
 
-	// Resolve a Discord ID to its user (logs may live in a separate LOG_DB, so
-	// filter by the resolved user_id rather than joining the users table).
-	if discordId != "" {
-		var uid int
-		if e := DB.Model(&User{}).Where("discord_id = ?", discordId).Limit(1).Pluck("id", &uid).Error; e != nil || uid == 0 {
-			return []*Log{}, 0, nil
-		}
-		tx = tx.Where("logs.user_id = ?", uid)
+// whereDiscordUser filters to the user holding discordId. Logs may live in a
+// separate LOG_DB, so it filters by the resolved user_id instead of joining users.
+func whereDiscordUser(tx *gorm.DB, discordId string) *gorm.DB {
+	var uid int
+	if e := DB.Model(&User{}).Where("discord_id = ?", discordId).Limit(1).Pluck("id", &uid).Error; e != nil || uid == 0 {
+		return tx.Where("1 = 0")
 	}
+	return tx.Where("logs.user_id = ?", uid)
+}
 
-	if modelName != "" {
-		modelNamePattern, err := modelNameLikePattern(modelName)
+func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
+	if f.Type != LogTypeUnknown {
+		tx = tx.Where("logs.type = ?", f.Type)
+	}
+	if f.DiscordId != "" {
+		tx = whereDiscordUser(tx, f.DiscordId)
+	}
+	if f.ModelName != "" {
+		modelNamePattern, err := modelNameLikePattern(f.ModelName)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		tx = whereLogILike(tx, "logs.model_name", modelNamePattern)
 	}
-	if username != "" {
-		// A Discord snowflake (all digits, 17-20 chars) pasted into the username
-		// box resolves to that user's logs, so admins can search by Discord ID
-		// without a separate field.
-		if looksLikeDiscordSnowflake(username) {
-			var uid int
-			if e := DB.Model(&User{}).Where("discord_id = ?", username).Limit(1).Pluck("id", &uid).Error; e != nil || uid == 0 {
-				return []*Log{}, 0, nil
-			}
-			tx = tx.Where("logs.user_id = ?", uid)
+	if f.Username != "" {
+		// A Discord snowflake pasted into the username box resolves to that
+		// user's logs, so admins can search by Discord ID without a separate field.
+		if looksLikeDiscordSnowflake(f.Username) {
+			tx = whereDiscordUser(tx, f.Username)
 		} else {
-			tx = tx.Where("logs.username = ?", username)
+			tx = tx.Where("logs.username = ?", f.Username)
 		}
 	}
-	if tokenName != "" {
-		tokenNamePattern, err := sanitizeLikePattern(tokenName)
+	if f.TokenName != "" {
+		tokenNamePattern, err := sanitizeLikePattern(f.TokenName)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		tx = whereLogILike(tx, "logs.token_name", "%"+tokenNamePattern+"%")
 	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
+	if f.RequestId != "" {
+		tx = tx.Where("logs.request_id = ?", f.RequestId)
 	}
-	if upstreamRequestId != "" {
-		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	if f.UpstreamRequestId != "" {
+		tx = tx.Where("logs.upstream_request_id = ?", f.UpstreamRequestId)
 	}
-	if startTimestamp != 0 {
-		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	if f.StartTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", f.StartTimestamp)
 	}
-	if endTimestamp != 0 {
-		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	if f.EndTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", f.EndTimestamp)
 	}
-	if channel != 0 {
-		tx = tx.Where("logs.channel_id = ?", channel)
+	if f.Channel != 0 {
+		tx = tx.Where("logs.channel_id = ?", f.Channel)
 	}
-	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	if f.Group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", f.Group)
 	}
-	if subscriptionPlan != "" {
-		planPattern, err := sanitizeLikePattern(subscriptionPlan)
+	if f.SubscriptionPlan != "" {
+		planPattern, err := sanitizeLikePattern(f.SubscriptionPlan)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		tx = whereLogILike(tx, "logs.other", `%"subscription_plan_title":"%`+planPattern+`%"%`)
+	}
+	return tx, nil
+}
+
+func GetAllLogs(filter LogFilter, startIdx int, num int) (logs []*Log, total int64, err error) {
+	tx, err := filter.apply(LOG_DB)
+	if err != nil {
+		return nil, 0, err
 	}
 	// A request_id names ONE row, so counting is pointless work: the unbounded count below
 	// scanned the whole logs table and took 40 to 60 seconds under load, which starved the
 	// rest of the gateway while a caller only wanted that single row.
-	if requestId != "" || upstreamRequestId != "" {
+	if filter.RequestId != "" || filter.UpstreamRequestId != "" {
 		order := "logs.id desc"
 		if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 			order = clickHouseLogOrder("logs.")
 		}
 		err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 		if err != nil {
-			common.SysError("failed to search logs by request id: " + err.Error())
-			return nil, 0, errors.New("failed to query logs")
+			common.SysError(common.LogText("failed to search logs by request id: %s", err.Error()))
+			return nil, 0, common.NewMessage("Failed to query logs")
 		}
 		populateChannelNames(logs)
 		assignDisplayLogIds(logs, startIdx)
@@ -752,54 +771,15 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, subscriptionPlan string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
-	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
-	}
-
-	if modelName != "" {
-		modelNamePattern, err := modelNameLikePattern(modelName)
-		if err != nil {
-			return nil, 0, err
-		}
-		tx = whereLogILike(tx, "logs.model_name", modelNamePattern)
-	}
-	if tokenName != "" {
-		tokenNamePattern, err := sanitizeLikePattern(tokenName)
-		if err != nil {
-			return nil, 0, err
-		}
-		tx = whereLogILike(tx, "logs.token_name", "%"+tokenNamePattern+"%")
-	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
-	}
-	if upstreamRequestId != "" {
-		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
-	}
-	if startTimestamp != 0 {
-		tx = tx.Where("logs.created_at >= ?", startTimestamp)
-	}
-	if endTimestamp != 0 {
-		tx = tx.Where("logs.created_at <= ?", endTimestamp)
-	}
-	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
-	}
-	if subscriptionPlan != "" {
-		planPattern, err := sanitizeLikePattern(subscriptionPlan)
-		if err != nil {
-			return nil, 0, err
-		}
-		tx = whereLogILike(tx, "logs.other", `%"subscription_plan_title":"%`+planPattern+`%"%`)
+func GetUserLogs(userId int, filter LogFilter, startIdx int, num int) (logs []*Log, total int64, err error) {
+	tx, err := filter.apply(LOG_DB.Where("logs.user_id = ?", userId))
+	if err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
-		common.SysError("failed to count user logs: " + err.Error())
-		return nil, 0, errors.New("failed to query logs")
+		common.SysError(common.LogText("failed to count user logs: %s", err.Error()))
+		return nil, 0, common.NewMessage("Failed to query logs")
 	}
 	order := "logs.id desc"
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
@@ -807,12 +787,79 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
-		common.SysError("failed to search user logs: " + err.Error())
-		return nil, 0, errors.New("failed to query logs")
+		common.SysError(common.LogText("failed to search user logs: %s", err.Error()))
+		return nil, 0, common.NewMessage("Failed to query logs")
 	}
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+// StreamAllLogs calls fn with each log matching filter, newest first, as an
+// administrator with role sees it. Rows are read one at a time, so an export
+// never holds the whole result in memory.
+func StreamAllLogs(ctx context.Context, filter LogFilter, role int, fn func(*Log) error) error {
+	tx, err := filter.apply(LOG_DB.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+	visibility := logOtherVisibilityAdmin
+	if role >= common.RoleRootUser {
+		visibility = logOtherVisibilityRoot
+	}
+	channelNames := make(map[int]string)
+	return streamLogs(tx, "logs.created_at desc, logs.id desc", func(log *Log) error {
+		if log.ChannelId != 0 {
+			name, ok := channelNames[log.ChannelId]
+			if !ok {
+				if channel, err := CacheGetChannel(log.ChannelId); err == nil {
+					name = channel.Name
+				}
+				channelNames[log.ChannelId] = name
+			}
+			log.ChannelName = name
+		}
+		log.Other = formatLogOtherJSON(log.Other, visibility)
+		return fn(log)
+	})
+}
+
+// StreamUserLogs is StreamAllLogs for one user's own logs, shaped like the
+// user log list.
+func StreamUserLogs(ctx context.Context, userId int, filter LogFilter, fn func(*Log) error) error {
+	tx, err := filter.apply(LOG_DB.WithContext(ctx).Where("logs.user_id = ?", userId))
+	if err != nil {
+		return err
+	}
+	count := 0
+	return streamLogs(tx, "logs.id desc", func(log *Log) error {
+		count++
+		log.Id = count
+		log.ChannelName = ""
+		log.Other = formatLogOtherJSON(log.Other, logOtherVisibilityUser)
+		return fn(log)
+	})
+}
+
+func streamLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("logs.")
+	}
+	rows, err := tx.Model(&Log{}).Order(order).Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var log Log
+		if err := LOG_DB.ScanRows(rows, &log); err != nil {
+			return err
+		}
+		if err := fn(&log); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 type Stat struct {

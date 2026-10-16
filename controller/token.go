@@ -286,7 +286,7 @@ func GetTokenUsage(c fuego.ContextNoBody) (*dto.Response[dto.TokenUsageData], er
 		expiredAt = 0
 	}
 
-	return dto.Ok(dto.TokenUsageData{
+	data := dto.TokenUsageData{
 		Object:             "token_usage",
 		Name:               token.Name,
 		TotalGranted:       token.RemainQuota + token.UsedQuota,
@@ -296,7 +296,23 @@ func GetTokenUsage(c fuego.ContextNoBody) (*dto.Response[dto.TokenUsageData], er
 		ModelLimits:        token.GetModelLimitsMap(),
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ExpiresAt:          expiredAt,
-	})
+	}
+	// An admin-owned key is in public hands (the guest key), so it never reveals the account balance.
+	if token.AllowUserQuotaQuery {
+		owner, err := model.GetUserById(token.UserId, false)
+		if err != nil {
+			return dto.Fail[dto.TokenUsageData]("Failed to get token info, please try again later")
+		}
+		if owner.Role < common.RoleAdminUser {
+			usedQuota, err := model.GetUserUsedQuota(token.UserId)
+			if err != nil {
+				common.SysError(common.LogText("failed to get user quota: %s", err.Error()))
+				return dto.Fail[dto.TokenUsageData]("Failed to get token info, please try again later")
+			}
+			data.UserQuota = &dto.TokenUserQuota{TotalAvailable: owner.Quota, TotalUsed: usedQuota}
+		}
+	}
+	return dto.Ok(data)
 }
 
 func AddToken(c fuego.ContextWithBody[dto.CreateTokenRequest]) (dto.MessageResponse, error) {
@@ -359,6 +375,7 @@ func AddToken(c fuego.ContextWithBody[dto.CreateTokenRequest]) (dto.MessageRespo
 			return dto.FailMsg(err.Error())
 		}
 	}
+	cleanToken.AllowUserQuotaQuery = token.AllowUserQuotaQuery == nil || *token.AllowUserQuotaQuery
 	err = cleanToken.Insert()
 	if err != nil {
 		return dto.FailMsg(err.Error())
@@ -427,10 +444,11 @@ func UpdateToken(c fuego.Context[dto.UpdateTokenRequest, dto.StatusOnlyParams]) 
 		}
 	}
 	before := map[string]interface{}{
-		"status":            cleanToken.Status,
-		"group":             cleanToken.Group,
-		"group_mapping":     cleanToken.GroupMapping,
-		"cross_group_retry": cleanToken.CrossGroupRetry,
+		"status":                 cleanToken.Status,
+		"group":                  cleanToken.Group,
+		"group_mapping":          cleanToken.GroupMapping,
+		"cross_group_retry":      cleanToken.CrossGroupRetry,
+		"allow_user_quota_query": cleanToken.AllowUserQuotaQuery,
 	}
 	if p.StatusOnly != "" {
 		cleanToken.Status = token.Status
@@ -449,6 +467,9 @@ func UpdateToken(c fuego.Context[dto.UpdateTokenRequest, dto.StatusOnlyParams]) 
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		if token.AllowUserQuotaQuery != nil {
+			cleanToken.AllowUserQuotaQuery = *token.AllowUserQuotaQuery
+		}
 		cleanToken.Group = token.Group
 		if token.CrossGroupRetry != nil {
 			cleanToken.CrossGroupRetry = *token.CrossGroupRetry
@@ -470,10 +491,11 @@ func UpdateToken(c fuego.Context[dto.UpdateTokenRequest, dto.StatusOnlyParams]) 
 		return dto.Fail[TokenResponse](err.Error())
 	}
 	after := map[string]interface{}{
-		"status":            cleanToken.Status,
-		"group":             cleanToken.Group,
-		"group_mapping":     cleanToken.GroupMapping,
-		"cross_group_retry": cleanToken.CrossGroupRetry,
+		"status":                 cleanToken.Status,
+		"group":                  cleanToken.Group,
+		"group_mapping":          cleanToken.GroupMapping,
+		"cross_group_retry":      cleanToken.CrossGroupRetry,
+		"allow_user_quota_query": cleanToken.AllowUserQuotaQuery,
 	}
 	changed := map[string]interface{}{}
 	for k, v := range after {

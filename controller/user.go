@@ -568,6 +568,7 @@ func Register(c fuego.ContextWithBody[dto.RegisterRequest]) (dto.MessageResponse
 			UnlimitedQuota:     true,
 			ModelLimitsEnabled: false,
 		}
+		token.AllowUserQuotaQuery = true
 		if setting.DefaultUseAutoGroup {
 			token.Group = "auto"
 		}

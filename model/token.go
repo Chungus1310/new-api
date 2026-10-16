@@ -38,6 +38,8 @@ type Token struct {
 	KeyHash *string `json:"-" gorm:"type:char(64);uniqueIndex"`
 	KeyEnc  string  `json:"-" gorm:"type:varchar(255)"`
 	KeyHint string  `json:"-" gorm:"type:varchar(16)"`
+	// Lets this key read its owner's quota; new keys start on, keys from before the field stay off.
+	AllowUserQuotaQuery bool `json:"allow_user_quota_query"`
 }
 
 func (token *Token) GetAutoGroups() ([]string, error) {
@@ -353,7 +355,8 @@ func (token *Token) Update() (err error) {
 		common.SysLog(common.LogText("failed to invalidate token cache before update: %s", cacheErr.Error()))
 	}
 	return DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "group_mapping", "auto_groups").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "group_mapping", "auto_groups",
+		"allow_user_quota_query").Updates(token).Error
 }
 
 // UpdateModelLimitsOnly writes model_limits and nothing else. Token.Update()

@@ -11,6 +11,14 @@ type TokenUsageData struct {
 	ModelLimits        map[string]bool `json:"model_limits"`
 	ModelLimitsEnabled bool            `json:"model_limits_enabled"`
 	ExpiresAt          int64           `json:"expires_at"`
+	// Present only when the key allows it and its owner is not an administrator.
+	UserQuota *TokenUserQuota `json:"user_quota,omitempty"`
+}
+
+// TokenUserQuota is the key owner's account quota, in quota units.
+type TokenUserQuota struct {
+	TotalAvailable int `json:"total_available"`
+	TotalUsed      int `json:"total_used"`
 }
 
 // CreateTokenRequest is the request body for POST /api/token/.
@@ -28,6 +36,8 @@ type CreateTokenRequest struct {
 	CrossGroupRetry *bool     `json:"cross_group_retry"`
 	GroupMapping    *string   `json:"group_mapping"`
 	AutoGroups      *[]string `json:"auto_groups"`
+	// nil on create means on; nil on update keeps the stored value.
+	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
 }
 
 // UpdateTokenRequest is the request body for PUT /api/token/.
@@ -47,6 +57,8 @@ type UpdateTokenRequest struct {
 	CrossGroupRetry *bool     `json:"cross_group_retry"`
 	GroupMapping    *string   `json:"group_mapping"`
 	AutoGroups      *[]string `json:"auto_groups"`
+	// nil on create means on; nil on update keeps the stored value.
+	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
 }
 
 // GuestTokenLimitsRequest is the body for PUT /api/token/guest-model-limits.

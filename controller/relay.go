@@ -268,17 +268,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			// ahead of the upstream call would otherwise label it text/event-stream and
 			// clients that branch on content type show "network error" for it.
 			helper.ResetEventStreamHeaders(c)
+			upstreamURLs := common.UpstreamAddresses(c)
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToOpenAIError())
+				helper.WssError(c, ws, newAPIError.ToOpenAIError(upstreamURLs...))
 			case types.RelayFormatClaude:
 				c.JSON(newAPIError.StatusCode, gin.H{
 					"type":  "error",
-					"error": newAPIError.ToClaudeError(),
+					"error": newAPIError.ToClaudeError(upstreamURLs...),
 				})
 			default:
 				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(),
+					"error": newAPIError.ToOpenAIError(upstreamURLs...),
 				})
 			}
 		}
