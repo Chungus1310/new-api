@@ -85,3 +85,6 @@ router/api-router.go :: apiRouter.Group("/group", middleware.ModAuth())
 router/api-router.go :: taskGroup.Group("", middleware.ModAuth())
 web/src/features/usage-logs/components/usage-logs-table.tsx :: userRole >= ROLE.ADMIN ? await getAdminPlans() : await getPublicPlans()
 router/api-router.go :: logGroup.Group("", middleware.ModAuth(), middleware.NoPAT())
+# a reseller must not show which provider answered: every host and domain in a client error is masked
+relaykit/relayconvert/kitutil/mask.go :: if !MaskEveryHost &&
+common/str.go :: kitutil.MaskEveryHost = true

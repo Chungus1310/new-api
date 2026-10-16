@@ -279,6 +279,10 @@ func MaskEmail(email string) string {
 	return "***@" + after
 }
 
+func init() {
+	kitutil.MaskEveryHost = true
+}
+
 // MaskSensitiveInfo moved to the conversion kit (kitutil) because the types
 // package error formatting depends on it; host callers keep this name.
 func MaskSensitiveInfo(str string, upstreamURLs ...string) string {

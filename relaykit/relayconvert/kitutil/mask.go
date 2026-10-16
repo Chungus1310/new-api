@@ -16,6 +16,8 @@ var (
 	// the caller trims them, like other punctuation, only when they trail it.
 	maskURLPattern = regexp.MustCompile(`(?:https?|wss?)://[^\s"<>{}]+`)
 	maskIPPattern  = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	// maskDomainPattern finds bare domains for MaskEveryHost.
+	maskDomainPattern = regexp.MustCompile(`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b`)
 	// maskBracketedIPv6Pattern matches the bracketed form Go network errors use
 	// for IPv6 addresses, as in "dial tcp [2001:db8::1]:443", with an optional
 	// zone; the caller confirms the content parses as an IP.
@@ -98,6 +100,10 @@ func maskURLQuery(rawQuery string) string {
 // dial tcp 192.168.1.1:443 -> dial tcp ***.***.***.***:443
 // https://docs.example.org/errors -> unchanged
 // https://auth.example.org/token?client_secret=s -> https://auth.example.org/token?client_secret=***
+// MaskEveryHost masks every URL host and bare domain, not only the request's
+// upstream hosts: a reseller must not show which provider answered.
+var MaskEveryHost bool
+
 func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 	// Mask API keys (e.g., "api_key:AIzaSyAAAaUooTUni8AdaOkSRMda30n_Q4vrV70" -> "api_key:***")
 	str = maskApiKeyPattern.ReplaceAllString(str, "${1}api_key:***${3}")
@@ -137,7 +143,7 @@ func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 			return match
 		}
 		host := strings.TrimSuffix(u.Hostname(), ".")
-		if !slices.ContainsFunc(upstreamHosts, func(upstreamHost string) bool { return strings.EqualFold(upstreamHost, host) }) {
+		if !MaskEveryHost && !slices.ContainsFunc(upstreamHosts, func(upstreamHost string) bool { return strings.EqualFold(upstreamHost, host) }) {
 			if u.RawQuery == "" && u.User == nil {
 				return match
 			}
@@ -201,6 +207,9 @@ func MaskSensitiveInfo(str string, upstreamURLs ...string) string {
 		return "[***]"
 	})
 	str = maskIPPattern.ReplaceAllString(str, "***.***.***.***")
+	if MaskEveryHost {
+		return maskDomainPattern.ReplaceAllStringFunc(str, maskHostForPlainDomain)
+	}
 	if len(upstreamHosts) == 0 {
 		return str
 	}
