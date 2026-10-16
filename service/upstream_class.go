@@ -116,16 +116,16 @@ var upstreamRules = []upstreamRule{
 	// The platform already paused a merchant that kept failing this model, or every
 	// candidate it could route to failed: the lane is cooling, not dead.
 	{markers: []string{"持续失败，平台已暂停", "智能路由候选均请求失败", "所有回退分组均不可用"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider paused this route after repeated failures. Retry and another provider will pick it up."},
-	{markers: []string{"负载已饱和", "该模型当前访问量过大", "请求暂时未能完成，请稍后重试", "当前模型服务暂不可用", "请等待其他对话生成完毕"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "The provider is overloaded right now. Retry and another provider will pick it up."},
+	{markers: []string{"负载已饱和", "该模型当前访问量过大", "请求暂时未能完成，请稍后重试", "当前模型服务暂不可用", "请等待其他对话生成完毕", "the selected model is temporarily unavailable", "this model is currently experiencing high demand", "worker local total request limit reached", "upstream connection failed before the request could be processed"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "The provider is overloaded right now. Retry and another provider will pick it up."},
 	// A relay running new-api answers this when none of its own channels serves the
 	// model for that group: the lane is empty, not refusing the request.
 	{markers: []string{"的可用渠道不存在", "的可用管道不存在", "无可用渠道", "no available channel for model"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "This provider has no capacity for that model right now. Retry and another provider will pick it up."},
-	{markers: []string{"等待响应超时", "上游响应超时", "未接收到上游响应内容"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider took too long to answer. Retry and another provider will pick it up."},
+	{markers: []string{"等待响应超时", "上游响应超时", "未接收到上游响应内容", "upstream failed: no completion within"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure, Cooldown: true}, userMessage: "The provider took too long to answer. Retry and another provider will pick it up."},
 	{markers: []string{"sensitive words detected", "内容不符合安全策略", "请求内容未通过安全检查"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
 	{markers: []string{"免费点数不足", "预扣费额度失败", "当前商户余额不足"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true, Provider: true}, userMessage: "This provider ran out of credit on their side. That is on us, not you: retry and the request goes to another provider."},
 	{markers: []string{"的价格尚未由管理员配置", "该商家渠道已暂停、下架或不存在"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider can no longer serve this model. We have removed it from rotation, so retry and another provider will take it."},
 	{markers: []string{"智能路由流式响应中途失败"}, class: UpstreamClass{Known: true, Failover: true, Count: CountFailure}, userMessage: "The provider dropped the response partway through. Please send the request again."},
-	{markers: []string{"请求参数不正确，请检查请求体", "请求未能完成，请检查请求参数", "限制小数点", "image_url格式错误", "当前模型或商家不支持请求中的能力", "上游渠道拒绝了图片请求"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider rejected one of the request's parameters. Retry and it will go to a provider that accepts it."},
+	{markers: []string{"请求参数不正确，请检查请求体", "请求未能完成，请检查请求参数", "限制小数点", "image_url格式错误", "当前模型或商家不支持请求中的能力", "上游渠道拒绝了图片请求", "inference request is invalid ("}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider rejected one of the request's parameters. Retry and it will go to a provider that accepts it."},
 	{markers: []string{"当前会话被上游安全策略封锁"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "The provider's safety policy blocked this conversation. Retry to reach another provider, or start a new chat."},
 	{markers: []string{"提示词或参考图此前已被上游内容审核拒绝", "提示词安全审计拒绝了本次请求"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "This provider refused the prompt on content grounds. Retrying may reach one that accepts it; otherwise rephrase it."},
 	{markers: []string{"免费请求额度已用完", "额度已用尽"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
@@ -143,7 +143,7 @@ var upstreamRules = []upstreamRule{
 	// trips on it while the lane still serves other requests: one free lane answered it 106
 	// times against 700 successes on 2026-09-21 and stayed enabled all day. The
 	// disabled-channel retest brings the lane back once the route answers again.
-	{markers: []string{"404 page not found", "please use an exact model id"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider no longer serves that model. It has left rotation, so please retry."},
+	{markers: []string{"404 page not found", "please use an exact model id", "` does not exist", ":free not supported"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider no longer serves that model. It has left rotation, so please retry."},
 	// A retired model: NVIDIA answers 410 "has reached its end of life on <date>
 	// and is no longer available". Nothing about it clears, and read as an
 	// unknown error it counted nothing: three lanes failed 18,600 requests in ten
@@ -160,7 +160,7 @@ var upstreamRules = []upstreamRule{
 	{markers: []string{"grok cli version"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's upstream client is out of date. It has left rotation, so please retry."},
 	// A free allowance spent until its daily or monthly reset fails every request until then, and a
 	// sole lane is never pulled on rate: one sole lane stayed listed through 367 of these in two days.
-	{markers: []string{"free tier limit reached", "too many tokens per day", "daily free quota for the model", "today's free-model token quota", "free-models-per-day", "api calls / month", "reached your monthly usage limit"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
+	{markers: []string{"free tier limit reached", "too many tokens per day", "daily free quota for the model", "today's free-model token quota", "free-models-per-day", "api calls / month", "reached your monthly usage limit", "you exceeded your current quota"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider's free allowance is used up until it resets. It has left rotation, so please retry and another provider will take it."},
 	// A demo site fronted by our proxy shards caps the messages per conversation:
 	// the customer's long chat is refused, the lane is fine. Its 502 read as a
 	// lane failure disabled ten of those lanes on 2026-09-21 at half their traffic.
@@ -188,6 +188,11 @@ var upstreamRules = []upstreamRule{
 	// A free key capped per hour across all its free ids (a 403) disabled six of
 	// eight lanes within minutes of their first sync (2026-09-26). Markers from
 	// QUARTER_HOUR_WINDOW_MARKERS.
+	// An image horde puts an address into timeout for a few minutes after a burst;
+	// every request until then is refused, and the lane is fine afterwards.
+	{markers: []string{"due to abuse prevention, your ip address has been put into timeout"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 5 * time.Minute}, userMessage: "This model's provider is full right now. Nothing is used up on your side. Retry and another provider will take it, or try again in a few minutes."},
+	// Our own proxy shards announce an exhausted hourly allowance this way.
+	{markers: []string{"shard exit at rph limit"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 15 * time.Minute}, userMessage: "This model is at its provider's hourly limit right now. Nothing is used up on your side. Retry and another provider will take it."},
 	{markers: operation_setting.QuarterHourWindowMarkers, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Window: 15 * time.Minute}, userMessage: "This model is at its provider's hourly limit right now. Nothing is used up on your side. Retry and another provider will take it."},
 	// A free lane whose upstream keeps answering that free capacity is limited
 	// and paid credits lift it: a 429 in words, but one lane failed 583
@@ -218,7 +223,7 @@ var upstreamRules = []upstreamRule{
 	// looks like from inside the tunnel. A capacity state of the shard, not a
 	// broken lane: 108 of these reached users in five minutes on 2026-09-21 while
 	// the generic 503 default counted every one and pulled the lane.
-	{markers: []string{"shard busy, retry on another shard", "upstream returned an empty answer"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "This model is at capacity right now. Nothing is used up on your side. Try again in a few moments."},
+	{markers: []string{"shard busy, retry on another shard", "upstream returned an empty answer", "shard exit at concurrent limit", "free model capacity exhausted"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone, Cooldown: true}, userMessage: "This model is at capacity right now. Nothing is used up on your side. Try again in a few moments."},
 	// Any host, rate limits and capacity: fail over, count nothing. AI Horde alone
 	// produced 190k of these in a week; each one disabled a lane the probe
 	// re-enabled five minutes later.
@@ -238,7 +243,7 @@ var upstreamRules = []upstreamRule{
 	// and 502 in equal measure across 11 lanes, so the status defaults counted half
 	// of it against lanes that did nothing wrong. The prompt caused it, not the lane.
 	{markers: []string{"检测到该会话包含敏感信息"}, class: UpstreamClass{Known: true, Failover: true, Count: CountNone}, userMessage: "The provider's content filter closed this conversation. Rephrasing the last message usually clears it."},
-	{markers: []string{"does not support chat completions"}, class: UpstreamClass{Known: true, Failover: false, Count: CountNone}, userMessage: "This model cannot be called from the chat completions endpoint."},
+	{markers: []string{"does not support chat completions", "or is not supported for generatecontent", "model was not found. make sure you are using the correct endpoint"}, class: UpstreamClass{Known: true, Failover: false, Count: CountNone}, userMessage: "This model cannot be called from the chat completions endpoint."},
 }
 
 // matchUpstreamRule returns the first rule whose marker appears in the message,
