@@ -1041,6 +1041,10 @@ func recordQuotaRejection(c *gin.Context, err *types.NewAPIError) {
 	if userId <= 0 {
 		return
 	}
+	// Shadow-banned farms rotate paid models past the per-model dedupe, so they leave no row.
+	if setting, settingErr := model.GetUserSetting(userId, false); settingErr == nil && setting.BlockFreeWhenNoQuota {
+		return
+	}
 	modelName := c.GetString("original_model")
 	if common.RedisEnabled {
 		fresh, redisErr := common.RedisSetNX(fmt.Sprintf("quota_reject_log:%d:%s", userId, modelName), "1", time.Minute)
