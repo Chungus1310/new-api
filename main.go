@@ -198,7 +198,7 @@ func main() {
 		return
 	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
-		common.SysLog(common.LogText("panic detected: %v", err))
+		common.SysLog(common.LogText("panic detected: %v", err) + fmt.Sprintf(" | %s | %s %s | %s", c.GetString(common.RequestIdKey), c.Request.Method, c.Request.URL.Path, common.PanicFrames(4)))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
 				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
