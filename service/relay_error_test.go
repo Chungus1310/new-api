@@ -140,19 +140,19 @@ func TestUpstreamAddressesMaskOnlyConfiguredAddresses(t *testing.T) {
 		want        string
 	}{
 		{
-			name:        "preset base URL stays readable",
+			name:        "preset base URL is masked too (prod masks every host)",
 			channelType: constant.ChannelTypeAnthropic,
 			baseURL:     "https://api.anthropic.com",
 			origin:      "https://api.anthropic.com",
 			message:     "request to https://api.anthropic.com/v1/messages failed, see https://platform.claude.com/docs/en/build-with-claude/task-budgets",
-			want:        "request to https://api.anthropic.com/v1/messages failed, see https://platform.claude.com/docs/en/build-with-claude/task-budgets",
+			want:        "request to https://***.com/***/*** failed, see https://***.com/***/***/***/***",
 		},
 		{
-			name:        "official endpoint built by the adaptor stays readable",
+			name:        "official endpoint built by the adaptor is masked too",
 			channelType: constant.ChannelTypeVertexAi,
 			origin:      "https://us-central1-aiplatform.googleapis.com",
 			message:     "request to https://us-central1-aiplatform.googleapis.com/v1/projects failed",
-			want:        "request to https://us-central1-aiplatform.googleapis.com/v1/projects failed",
+			want:        "request to https://***.com/***/*** failed",
 		},
 		{
 			name:        "configured base URL is masked",
