@@ -253,6 +253,16 @@ func perModelRateLimit(c *gin.Context) bool {
 		return true
 	}
 	_, successMaxCount, windowMinutes, found := setting.GetModelRateLimit(mr.Model)
+	// The distributor routes "K2-HORIZON:FREE" or "k2_horizon:free" to the served
+	// model; limiting only the exact name let every such variant run unlimited. Only
+	// free ids carry limits and the colon survives every variant, so paid traffic
+	// skips the scan.
+	if !found && strings.Contains(strings.ToLower(mr.Model), ":free") {
+		if resolved, ok := model.ResolveModelNameVariant(mr.Model); ok {
+			mr.Model = resolved
+			_, successMaxCount, windowMinutes, found = setting.GetModelRateLimit(resolved)
+		}
+	}
 	if !found || successMaxCount <= 0 {
 		return true
 	}
