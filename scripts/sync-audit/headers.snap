@@ -18,6 +18,7 @@
 "sec-websocket-protocol"
 "sec-websocket-version"
 "session_id"
+"x-amz-date"
 "x-api-key"
 "x-codex-beta-features"
 "x-forwarded-proto"
@@ -26,3 +27,4 @@
 "x-group"
 "x-plugin"
 "x-security-proof"
+"x-test"
