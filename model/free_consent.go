@@ -70,7 +70,9 @@ const (
 func FreeAccessFor(userId int, guestId string, modelName string) FreeAccess {
 	subject := freeConsentSubject(userId, guestId)
 	entry, ok := loadFreeConsentEntry(subject)
-	if !ok {
+	// Only a cached yes is trusted: a consent just given on another replica must
+	// not be refused for the rest of this replica's TTL.
+	if !ok || (!entry.business && !entry.models[modelName]) {
 		var err error
 		entry, err = buildFreeConsentEntry(userId, guestId)
 		if err != nil {
