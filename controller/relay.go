@@ -430,14 +430,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// Tracked before the ban check on purpose: a banned account must keep
 		// counting toward its host's window, otherwise a farm shrinks to just under
 		// the threshold and its last accounts leak forever.
-		// A bound login, any spend or a verified email exempts an account from every
-		// free-model ban, including an auto block it earned before proving itself.
+		// A bound login, any spend or a verified email exempts an account from the
+		// farm verdict. The block flag binds everyone: binding a login or paying
+		// already clears one earned before (model.LiftShadowBan), so a flag still set
+		// was earned or set by an admin after the account proved itself.
 		freeVerified := service.FreeUserVerified(relayInfo.UserHasIdentity, relayInfo.UserUsedQuota, relayInfo.UserEmail)
 		if relayInfo.UserId > 0 && !relayInfo.UserSetting.UnlimitedFreeModels && relayInfo.UserQuota <= 0 && !freeVerified {
 			service.TrackFreeCooccurrence(c, relayInfo.UserId)
 		}
-		if relayInfo.UserQuota <= 0 && !freeVerified &&
-			(relayInfo.UserSetting.BlockFreeWhenNoQuota || service.FreeModelsShadowBanned(relayInfo.UserId)) {
+		if relayInfo.UserQuota <= 0 &&
+			(relayInfo.UserSetting.BlockFreeWhenNoQuota || (!freeVerified && service.FreeModelsShadowBanned(relayInfo.UserId))) {
 			// Shadow ban: return the same 429 rate-limit response a throttled free
 			// user gets, so an abuser cannot tell they are specifically blocked.
 			newAPIError = types.NewErrorWithStatusCode(
@@ -1455,14 +1457,16 @@ func executeTaskSubmissionWith(
 		// Tracked before the ban check on purpose: a banned account must keep
 		// counting toward its host's window, otherwise a farm shrinks to just under
 		// the threshold and its last accounts leak forever.
-		// A bound login, any spend or a verified email exempts an account from every
-		// free-model ban, including an auto block it earned before proving itself.
+		// A bound login, any spend or a verified email exempts an account from the
+		// farm verdict. The block flag binds everyone: binding a login or paying
+		// already clears one earned before (model.LiftShadowBan), so a flag still set
+		// was earned or set by an admin after the account proved itself.
 		freeVerified := service.FreeUserVerified(relayInfo.UserHasIdentity, relayInfo.UserUsedQuota, relayInfo.UserEmail)
 		if relayInfo.UserId > 0 && !relayInfo.UserSetting.UnlimitedFreeModels && relayInfo.UserQuota <= 0 && !freeVerified {
 			service.TrackFreeCooccurrence(c, relayInfo.UserId)
 		}
-		if relayInfo.UserQuota <= 0 && !freeVerified &&
-			(relayInfo.UserSetting.BlockFreeWhenNoQuota || service.FreeModelsShadowBanned(relayInfo.UserId)) {
+		if relayInfo.UserQuota <= 0 &&
+			(relayInfo.UserSetting.BlockFreeWhenNoQuota || (!freeVerified && service.FreeModelsShadowBanned(relayInfo.UserId))) {
 			return nil, service.TaskErrorWrapperLocal(
 				errors.New(shadowBanRateLimitMessage(c, relayInfo.UserId, relayInfo.OriginModelName)),
 				string(types.ErrorCodeRateLimitExceeded), http.StatusTooManyRequests)
