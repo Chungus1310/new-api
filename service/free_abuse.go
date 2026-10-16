@@ -102,7 +102,11 @@ func TrackFreeModelUsage(userId int, userQuota int, modelName string, verified b
 // Text models are exempt (users legitimately try several chat models). No-op when
 // disabled or quota > 0.
 func TrackFreeModelError(userId int, userQuota int, modelName string, isMedia bool, verified bool) {
-	if userId <= 0 || userQuota > 0 {
+	// A verified account's failures are usually ours or its chat outgrowing the
+	// context (a 400 its client retries on every message), and since the block
+	// binds verified accounts this signal cut off ordinary users. The volume and
+	// sweep signals in TrackFreeModelUsage still apply to them.
+	if userId <= 0 || userQuota > 0 || verified {
 		return
 	}
 	setting := operation_setting.GetQuotaSetting()
