@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -160,6 +162,11 @@ var (
 	modelRankingCache   = map[string]modelRankingCacheItem{}
 )
 
+// One build per key at a time: on expiry every caller used to run the same
+// multi-minute quota_data aggregation, and the pile-up exhausted Postgres
+// connections (2026-10-16, ~140 concurrent copies).
+var rankingBuilds singleflight.Group
+
 func GetModelRankingSnapshot(modelName string, period string) (*ModelRankingResponse, error) {
 	config, err := rankingConfig(period)
 	if err != nil {
@@ -175,9 +182,15 @@ func GetModelRankingSnapshot(modelName string, period string) (*ModelRankingResp
 	}
 	modelRankingCacheMu.Unlock()
 
-	data, err := buildModelRankingSnapshot(modelName, config, now)
+	built, err, _ := rankingBuilds.Do("model|"+cacheKey, func() (any, error) {
+		return buildModelRankingSnapshot(modelName, config, now)
+	})
 	if err != nil {
 		return nil, err
+	}
+	data, ok := built.(*ModelRankingResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model ranking build result %T", built)
 	}
 
 	modelRankingCacheMu.Lock()
@@ -251,9 +264,15 @@ func GetRankingsSnapshot(period string) (*RankingsResponse, error) {
 	}
 	rankingCacheMu.Unlock()
 
-	data, err := buildRankingsSnapshot(config, now)
+	built, err, _ := rankingBuilds.Do("all|"+config.id, func() (any, error) {
+		return buildRankingsSnapshot(config, now)
+	})
 	if err != nil {
 		return nil, err
+	}
+	data, ok := built.(*RankingsResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected rankings build result %T", built)
 	}
 
 	rankingCacheMu.Lock()
