@@ -102,7 +102,7 @@ var upstreamRules = []upstreamRule{
 	{markers: []string{"可用额度不足", "您已超过输入 tokens 配额"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true, Provider: true}, userMessage: "This provider ran out of credit on their side. That is on us, not you: retry and the request goes to another provider."},
 	// The upstream balance is gone (a reseller adds "and will not recover soon"),
 	// or our account there is banned.
-	{markers: []string{"上游账户余额不足", "账号处于封禁状态", "insufficient balance", "no credits available", "may have insufficient balance"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider can no longer take requests from us. We have taken it out of rotation, so please retry."},
+	{markers: []string{"上游账户余额不足", "账号处于封禁状态", "insufficient balance", "no credits available", "may have insufficient balance", "insufficient free or premium credits"}, class: UpstreamClass{Known: true, Failover: true, DisableNow: true}, userMessage: "This provider can no longer take requests from us. We have taken it out of rotation, so please retry."},
 	// Reseller, platform-wide faults every lane on the host answers together (auth
 	// database degraded, CPU admission, no channel found, platform concurrency):
 	// 290 rows across 55 lanes in three minutes on 2026-09-16. Counted per lane
