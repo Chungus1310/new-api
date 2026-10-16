@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -976,7 +977,7 @@ func freeModelAllowed(c *gin.Context, requestedModel string) bool {
 		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeBusiness), types.ErrorCode("free_models_business"))
 		return false
 	case model.FreeAccessNeedsConsent:
-		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": requestedModel, "Url": system_setting.UserLinkBase() + "/chat"}), types.ErrorCode("free_consent_required"))
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": requestedModel, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(requestedModel)}), types.ErrorCode("free_consent_required"))
 		return false
 	}
 	return true
