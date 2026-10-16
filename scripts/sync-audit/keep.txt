@@ -76,3 +76,11 @@ router/api-router.go :: middleware.TurnstileCheckAnonymous()
 model/user_access_token.go :: The BFF still issues legacy tokens
 controller/relay.go :: newAPIError.StatusCode == http.StatusBadGateway
 service/upstream_class.go :: "database error:", "undefinedcolumn"
+# moderators (role 5) read the admin pages: every read a mod page fires on mount stays ModAuth,
+# and a mod page never calls an AdminAuth route (2026-10-13: usage logs fetched the admin plan list)
+router/api-router.go :: apiRouter.GET("/data/users", middleware.ModAuth()
+router/api-router.go :: apiRouter.Group("/channel", middleware.ModAuth())
+router/api-router.go :: apiRouter.Group("/data", middleware.ModAuth())
+router/api-router.go :: apiRouter.Group("/group", middleware.ModAuth())
+router/api-router.go :: taskGroup.Group("", middleware.ModAuth())
+web/src/features/usage-logs/components/usage-logs-table.tsx :: userRole >= ROLE.ADMIN ? await getAdminPlans() : await getPublicPlans()
