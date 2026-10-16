@@ -81,16 +81,12 @@ func mergeGroupDataPolicies(channels []*Channel) map[string]dto.GroupDataPolicy 
 			existing, seen := merged[group]
 			if !seen {
 				merged[group] = dto.GroupDataPolicy{
-					Provider:           current.Provider,
 					SeatCountry:        current.SeatCountry,
 					Prompts:            orUnknown(current.Prompts),
 					Transfer:           orUnknown(current.Transfer),
 					UnsafeThirdCountry: current.UnsafeThirdCountry(),
 				}
 				continue
-			}
-			if existing.Provider == "" {
-				existing.Provider = current.Provider
 			}
 			if seatRisk(current.SeatCountry) > seatRisk(existing.SeatCountry) ||
 				(seatRisk(current.SeatCountry) == seatRisk(existing.SeatCountry) && current.SeatCountry < existing.SeatCountry) {
