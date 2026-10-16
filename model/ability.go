@@ -94,6 +94,17 @@ func GroupsServingModel(model string) ([]string, error) {
 	return groups, nil
 }
 
+// GroupsListingModel is GroupsServingModel without the enabled filter: the
+// groups a model would route through once any of its channels is back.
+func GroupsListingModel(model string) ([]string, error) {
+	var groups []string
+	err := DB.Table("abilities").
+		Where("model = ?", model).
+		Distinct(commonGroupCol).
+		Pluck(commonGroupCol, &groups).Error
+	return groups, err
+}
+
 func GetGroupEnabledModels(group string) []string {
 	var models []string
 	// Find distinct models

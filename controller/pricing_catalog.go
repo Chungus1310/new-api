@@ -808,6 +808,11 @@ func GetPricingModelGroups(c fuego.ContextNoBody) (dto.PricingModelGroupsData, e
 		return empty, nil
 	}
 	groups, groupRatio, chain, providers := modelGroups(c, pricing)
+	// An offline model still needs its seat countries, for the free model consent
+	// a user can give before it is back, so fall back to its disabled groups.
+	if len(groups) == 0 {
+		groups, providers = offlineModelGroups(pricing.ModelName)
+	}
 	return dto.PricingModelGroupsData{
 		EnableGroups:   groups,
 		GroupRatio:     groupRatio,
@@ -930,4 +935,20 @@ func newestFreeChatModel(models []dto.PricingCatalogModel) string {
 		return pick
 	}
 	return newest(func(m dto.PricingCatalogModel) bool { return m.IsFree })
+}
+
+func offlineModelGroups(modelName string) ([]string, map[string]dto.GroupDataPolicy) {
+	providers := map[string]dto.GroupDataPolicy{}
+	groups, err := model.GroupsListingModel(modelName)
+	if err != nil {
+		common.SysError("failed to list groups of offline model " + modelName + ": " + err.Error())
+		return []string{}, providers
+	}
+	policies := model.GroupDataPolicies()
+	for _, g := range groups {
+		if p, ok := policies[g]; ok {
+			providers[g] = p
+		}
+	}
+	return groups, providers
 }
