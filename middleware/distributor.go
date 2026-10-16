@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -960,21 +961,17 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 	return true
 }
 
-const guestIdHeader = "X-Guest-Id"
-
 // freeModelAllowed enforces the documented consent a :free model needs, since
-// its providers may use prompts for their own purposes. A guest is the chat
-// BFF's guest cookie, believed only alongside the BFF's service secret; without
-// it the request is judged as the key owner's and fails closed.
+// its providers may use prompts for their own purposes. The guest key's owner
+// is delegated: the chat BFF checks each guest's own consent before relaying.
 func freeModelAllowed(c *gin.Context, requestedModel string) bool {
 	if !common.FreeConsentEnforcementEnabled || !notify.IsFreeModel(requestedModel) {
 		return true
 	}
-	guestId := ""
-	if ResolvedByBFF(c) {
-		guestId = strings.TrimSpace(c.GetHeader(guestIdHeader))
+	if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.FreeConsentDelegated {
+		return true
 	}
-	switch model.FreeAccessFor(c.GetInt("id"), guestId, requestedModel) {
+	switch model.FreeAccessFor(c.GetInt("id"), "", requestedModel) {
 	case model.FreeAccessBusiness:
 		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeBusiness), types.ErrorCode("free_models_business"))
 		return false
