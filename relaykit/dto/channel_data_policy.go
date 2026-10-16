@@ -11,6 +11,8 @@ var countryCodePattern = regexp.MustCompile(`^[A-Z]{2}$`)
 // ChannelDataPolicy records what the upstream behind a channel does with the
 // data it relays. Every field is optional; an empty value means unknown.
 type ChannelDataPolicy struct {
+	// Provider names who operates the upstream, shown in the free model consent.
+	Provider string `json:"provider,omitempty"`
 	// SeatCountry is the ISO 3166-1 alpha-2 code of the provider's seat.
 	SeatCountry string `json:"seat_country,omitempty"`
 	// Prompts is one of DataPolicyPrompts*.
@@ -81,6 +83,9 @@ func (p *ChannelDataPolicy) UnsafeThirdCountry() bool {
 func (p *ChannelDataPolicy) Validate() error {
 	if p == nil {
 		return nil
+	}
+	if len(p.Provider) > 120 {
+		return fmt.Errorf("invalid data_policy.provider: longer than 120 characters")
 	}
 	if p.SeatCountry != "" && !countryCodePattern.MatchString(p.SeatCountry) {
 		return fmt.Errorf("invalid data_policy.seat_country: %q, expected an uppercase ISO 3166-1 alpha-2 code", p.SeatCountry)

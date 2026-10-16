@@ -212,6 +212,10 @@ var RetryTimes = 0
 // costs nothing to retry, so the chain walks further before giving up.
 var FreeRetryTimes = 3
 
+// FreeConsentEnforcementEnabled refuses a :free model to anyone without a
+// recorded consent for it, and to business customers outright.
+var FreeConsentEnforcementEnabled = false
+
 // MaxTotalRelayAttempts caps how many channels one request may be tried against
 // in total. RetryTimes is per-group once cross-group auto-retry resets the
 // counter on each group switch, so without this the ceiling scales with the

@@ -403,6 +403,7 @@ func migrateDB() error {
 		&AuthzRole{},
 		&PushSubscription{},
 		&UserAccessToken{},
+		&FreeConsent{},
 	)
 	if err != nil {
 		return err

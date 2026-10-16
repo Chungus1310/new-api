@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/notify"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -23,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -62,6 +64,9 @@ func Distribute() func(c *gin.Context) {
 		// (the guest key) reached any model by appending "-<channelId>" to the key
 		// (2026-09-07, from Tor).
 		if !tokenModelAllowed(c, modelRequest.Model) {
+			return
+		}
+		if !freeModelAllowed(c, modelRequest.Model) {
 			return
 		}
 
@@ -950,6 +955,31 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 	}
 	if !TokenModelLimitAllows(tokenModelLimit, requestedModel) {
 		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": requestedModel}))
+		return false
+	}
+	return true
+}
+
+const guestIdHeader = "X-Guest-Id"
+
+// freeModelAllowed enforces the documented consent a :free model needs, since
+// its providers may use prompts for their own purposes. A guest is the chat
+// BFF's guest cookie, believed only alongside the BFF's service secret; without
+// it the request is judged as the key owner's and fails closed.
+func freeModelAllowed(c *gin.Context, requestedModel string) bool {
+	if !common.FreeConsentEnforcementEnabled || !notify.IsFreeModel(requestedModel) {
+		return true
+	}
+	guestId := ""
+	if ResolvedByBFF(c) {
+		guestId = strings.TrimSpace(c.GetHeader(guestIdHeader))
+	}
+	switch model.FreeAccessFor(c.GetInt("id"), guestId, requestedModel) {
+	case model.FreeAccessBusiness:
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeBusiness), types.ErrorCode("free_models_business"))
+		return false
+	case model.FreeAccessNeedsConsent:
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": requestedModel, "Url": system_setting.UserLinkBase() + "/settings"}), types.ErrorCode("free_consent_required"))
 		return false
 	}
 	return true

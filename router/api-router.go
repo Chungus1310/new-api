@@ -151,6 +151,10 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		userPublic := dto.NewRouter(engine, userGroup, "User", secPublic())
 		dto.Get(userPublic, "/logout", controller.Logout)
 		dto.Get(userPublic, "/groups", controller.GetUserGroups)
+		// Guest consents: the handlers accept only the chat BFF (service secret plus X-Guest-Id).
+		dto.Get(userPublic, "/guest/free-consents", controller.GetGuestFreeConsents)
+		dto.PostB(userPublic, "/guest/free-consents", controller.GrantGuestFreeConsent)
+		dto.DeleteB(userPublic, "/guest/free-consents", controller.RevokeGuestFreeConsent)
 
 		userPaymentPublic := dto.NewRouter(engine, userGroup, "Payment", secPublic())
 		userPaymentPublic.GinPost("/epay/notify", controller.EpayNotify, dto.GinResp[dto.MessageResponse]())
@@ -174,6 +178,9 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		selfCred := dto.NewRouter(engine, selfGroup.Group("", middleware.SessionOnly()), "User", secDashboard())
 		dto.Put(selfCriticalUser, "/self", controller.UpdateSelf)
 		dto.PutB(self, "/self/timeout", controller.UpdateTimeoutPreference)
+		dto.Get(self, "/self/free-consents", controller.GetFreeConsents)
+		dto.PostB(self, "/self/free-consents", controller.GrantFreeConsent)
+		dto.DeleteB(self, "/self/free-consents", controller.RevokeFreeConsent)
 		dto.Delete(selfCred, "/self", controller.DeleteSelf)
 		dto.Get(selfCred, "/token", controller.GenerateAccessToken)
 		accessTokenGroup := selfGroup.Group("/access_tokens", middleware.SessionOnly())

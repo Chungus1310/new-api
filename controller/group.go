@@ -40,6 +40,7 @@ func GetUserGroups(c fuego.ContextNoBody) (*dto.Response[map[string]dto.UserGrou
 				Ratio:              service.GetUserGroupRatio(userGroup, groupName),
 				Desc:               desc,
 				Online:             liveGroups == nil || liveGroups[groupName],
+				Provider:           policy.Provider,
 				SeatCountry:        policy.SeatCountry,
 				Prompts:            policy.Prompts,
 				Transfer:           policy.Transfer,
