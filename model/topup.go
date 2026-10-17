@@ -38,6 +38,9 @@ type TopUp struct {
 	// an abandoned checkout carries a ChargedMoney it never paid. Use PaidAmount
 	// to tell "money arrived" from "invoice opened".
 	ChargedMoney float64 `json:"charged_money" gorm:"default:0"`
+	// Quota a refund already took back. A partial refund flips the order to refunded,
+	// and without this a later chargeback had nothing left to say it should take.
+	ReversedQuota int64 `json:"reversed_quota" gorm:"default:0"`
 	// Funds the provider reports as RECEIVED, in the order's own currency, from
 	// the webhook rather than from our own record of what we asked for. Nothing
 	// else in this table distinguishes a paid-but-uncredited order from a
@@ -800,6 +803,26 @@ func ReverseTopUp(in TopUpReversalInput) (TopUpReversalResult, error) {
 			return ErrTopUpNotFound
 		}
 		res.TopUpId = topUp.Id
+		credited := reversibleQuota(topUp)
+		if topUp.Status == common.TopUpStatusRefunded && in.Dispute && topUp.ReversedQuota > 0 && credited > topUp.ReversedQuota {
+			// A chargeback after a partial refund takes the rest. Rows refunded before
+			// ReversedQuota existed carry 0 and stay as they are rather than risk a double take.
+			quota := credited - topUp.ReversedQuota
+			flip := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusRefunded).
+				Updates(map[string]any{"status": status, "reversed_quota": credited})
+			if flip.Error != nil {
+				return flip.Error
+			}
+			if flip.RowsAffected == 0 {
+				res.AlreadyDone = true
+				return nil
+			}
+			if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota - ?", quota)).Error; err != nil {
+				return err
+			}
+			res.QuotaRemoved = int(quota)
+			return nil
+		}
 		if topUp.Status == common.TopUpStatusRefunded || topUp.Status == common.TopUpStatusDisputed {
 			res.AlreadyDone = true
 			return nil
@@ -808,19 +831,20 @@ func ReverseTopUp(in TopUpReversalInput) (TopUpReversalResult, error) {
 			// Never credited (abandoned or still pending): nothing to take back.
 			return tx.Model(&TopUp{}).Where("id = ?", topUp.Id).Update("status", status).Error
 		}
-		quota := int(topUp.Amount)
-		if topUp.Amount <= 0 {
+		quota := credited
+		if quota <= 0 {
 			// A subscription purchase carries its value in the plan, not in Amount: mark it
 			// and let the caller end the subscription instead of failing the webhook forever.
 			return tx.Model(&TopUp{}).Where("id = ?", topUp.Id).Update("status", status).Error
 		}
 		if !in.Dispute && in.PaidCents > 0 && in.ReversedCents > 0 && in.ReversedCents < in.PaidCents {
-			quota = int(math.Round(float64(topUp.Amount) * float64(in.ReversedCents) / float64(in.PaidCents)))
+			quota = int64(math.Round(float64(credited) * float64(in.ReversedCents) / float64(in.PaidCents)))
 		}
 		if quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		flip := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusSuccess).Update("status", status)
+		flip := tx.Model(&TopUp{}).Where("id = ? AND status = ?", topUp.Id, common.TopUpStatusSuccess).
+			Updates(map[string]any{"status": status, "reversed_quota": quota})
 		if flip.Error != nil {
 			return flip.Error
 		}
@@ -831,7 +855,7 @@ func ReverseTopUp(in TopUpReversalInput) (TopUpReversalResult, error) {
 		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota - ?", quota)).Error; err != nil {
 			return err
 		}
-		res.QuotaRemoved = quota
+		res.QuotaRemoved = int(quota)
 		return nil
 	})
 	if err != nil {
@@ -843,6 +867,16 @@ func ReverseTopUp(in TopUpReversalInput) (TopUpReversalResult, error) {
 		}
 	}
 	return res, nil
+}
+
+// reversibleQuota is the quota the top-up credited. Creem stores it in Amount;
+// Stripe credits Money*QuotaPerUnit and keeps the typed dollar count in Amount, so
+// reversing Amount took back $0.002 of a $1000 top-up.
+func reversibleQuota(topUp *TopUp) int64 {
+	if topUp.PaymentMethod == "stripe" {
+		return decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Round(0).IntPart()
+	}
+	return topUp.Amount
 }
 
 func resolveReversalTopUp(tx *gorm.DB, in TopUpReversalInput) (*TopUp, int, error) {
