@@ -292,8 +292,36 @@ func writeLoginResponse(c *gin.Context, user *model.User, bundle *service.AuthBu
 
 // setupLoginAndRedirect generates a one-time exchange code and returns a redirect URL.
 // The external frontend exchanges the code for user data via POST /api/oauth/exchange.
-func setupLoginAndRedirect(user *model.User, c *gin.Context, redirectURI string) {
+func setupLoginAndRedirect(user *model.User, migration *service.LegacyGitHubMigration, c *gin.Context, redirectURI string) {
 	backfillRegisterIp(user, c)
+
+	// The same-origin login asks for 2FA or a passkey here; issuing the session
+	// straight away let anyone holding the OAuth identity skip the second factor.
+	challenge, err := service.StartLoginVerification(user, loginMethodFromContext(c), migration)
+	if err != nil {
+		writeSecurityOperationError(c, err)
+		return
+	}
+	if challenge != nil {
+		methods, err := common.Marshal(challenge.Methods)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		code, err := common.StoreOAuthExchangeCode(&common.OAuthExchangeData{
+			UserID:    user.Id,
+			Action:    "login_verification",
+			FlowToken: challenge.FlowToken,
+			Methods:   methods,
+			State:     c.Query("state"),
+		})
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		redirectWithExchangeCode(c, redirectURI, code)
+		return
+	}
 
 	// OAuth login issues the same 30-day access token the password path issues and
 	// reports its expiry, so the external frontend can size its cookie to the
@@ -449,6 +477,8 @@ func ExchangeOAuthCode(c fuego.ContextWithBody[dto.OAuthExchangeRequest]) (*dto.
 		ProofExpiresAt:  data.ProofExpiresAt,
 		Scope:           data.Scope,
 		State:           data.State,
+		FlowToken:       data.FlowToken,
+		Methods:         data.Methods,
 	})
 }
 
@@ -2081,4 +2111,18 @@ func effectiveTopUpBonus(perUser *float64) float64 {
 		return *perUser
 	}
 	return 0
+}
+
+func redirectWithExchangeCode(c *gin.Context, redirectURI string, code string) {
+	parsed, _ := url.Parse(redirectURI)
+	q := parsed.Query()
+	q.Set("code", code)
+	parsed.RawQuery = q.Encode()
+	c.JSON(http.StatusOK, dto.ApiResponse{
+		Success: true,
+		Message: "redirect",
+		Data: dto.LoginData{
+			RedirectURL: parsed.String(),
+		},
+	})
 }

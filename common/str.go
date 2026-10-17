@@ -219,6 +219,9 @@ type OAuthExchangeData struct {
 	ProofExpiresAt  int64  `json:"proof_expires_at,omitempty"`
 	Scope           string `json:"scope,omitempty"`
 	State           string `json:"state,omitempty"`
+	// Set when Action is login_verification: the 2FA or passkey challenge the login still owes.
+	FlowToken string          `json:"flow_token,omitempty"`
+	Methods   json.RawMessage `json:"methods,omitempty"`
 }
 
 func StoreOAuthExchangeCode(data *OAuthExchangeData) (string, error) {

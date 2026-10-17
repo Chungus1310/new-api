@@ -1,6 +1,10 @@
 package dto
 
-import relaydto "github.com/QuantumNous/new-api/relaykit/dto"
+import (
+	"encoding/json"
+
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
+)
 
 // ApiResponse is the standard response wrapper for all API endpoints.
 type ApiResponse struct {
@@ -80,6 +84,10 @@ type OAuthExchangeData struct {
 	// with the state its own browser started, so a code captured from someone else's
 	// login cannot sign a victim's browser into that account.
 	State string `json:"state,omitempty"`
+	// Set when Action is login_verification: the account has 2FA or a passkey, so the
+	// code carries the challenge instead of a session.
+	FlowToken string          `json:"flow_token,omitempty"`
+	Methods   json.RawMessage `json:"methods,omitempty"`
 }
 
 // --- Partial annotation types for unconvertible routes ---

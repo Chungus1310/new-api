@@ -476,7 +476,7 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 
 	// 10. External redirect or same-origin login
 	if redirectURI != "" {
-		setupLoginAndRedirect(user, c, redirectURI)
+		setupLoginAndRedirect(user, migration, c, redirectURI)
 		return
 	}
 	setupLogin(user, migration, c)
