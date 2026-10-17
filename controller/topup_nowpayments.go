@@ -472,7 +472,9 @@ func getNowPaymentsMinTopup() int64 {
 // nowPaymentsUnderpaymentTolerance matches the "payment covering" percentage
 // configured on the NowPayments merchant account, so both sides agree on what
 // counts as paid.
-const nowPaymentsUnderpaymentTolerance = 0.10
+// Gas and rounding shortfalls are fractions of a percent; 10% let every crypto
+// buyer pay 90% of the invoice and still be credited in full.
+const nowPaymentsUnderpaymentTolerance = 0.02
 
 // withinUnderpaymentTolerance reports whether a partially paid deposit is close
 // enough to the invoice to credit. Overpayments always qualify; a shortfall
