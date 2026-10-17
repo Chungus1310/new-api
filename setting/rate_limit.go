@@ -31,6 +31,11 @@ var ModelRequestRateLimitMutex sync.RWMutex
 var ModelRequestRateLimitModels = map[string][]int{}
 var ModelRequestRateLimitModelsMutex sync.RWMutex
 
+// modelRateLimitByFoldKey maps common.ModelNameFoldKey of each limited model to
+// its exact name. The distributor serves "K2-HORIZON:FREE" or "k2-horizon:fre-e" as
+// k2-horizon:free, so the limit has to find that model from any such spelling.
+var modelRateLimitByFoldKey = map[string]string{}
+
 func ModelRequestRateLimitGroup2JSONString() string {
 	ModelRequestRateLimitMutex.RLock()
 	defer ModelRequestRateLimitMutex.RUnlock()
@@ -107,8 +112,25 @@ func UpdateModelRequestRateLimitModelsByJSONString(jsonStr string) error {
 			return fmt.Errorf("model %s rate limit must be [total, success] or [total, success, windowMinutes]", model)
 		}
 	}
+	byFoldKey := make(map[string]string, len(parsed))
+	for model := range parsed {
+		byFoldKey[common.ModelNameFoldKey(model)] = model
+	}
 	ModelRequestRateLimitModels = parsed
+	modelRateLimitByFoldKey = byFoldKey
 	return nil
+}
+
+// ResolveRateLimitedModel returns the limited model a request name stands for:
+// the exact name when it carries a rule, else the rule whose folded name matches.
+func ResolveRateLimitedModel(model string) (string, bool) {
+	ModelRequestRateLimitModelsMutex.RLock()
+	defer ModelRequestRateLimitModelsMutex.RUnlock()
+	if _, ok := ModelRequestRateLimitModels[model]; ok {
+		return model, true
+	}
+	canonical, ok := modelRateLimitByFoldKey[common.ModelNameFoldKey(model)]
+	return canonical, ok
 }
 
 // GetModelRateLimit returns the per-model limits. windowMinutes is 0 when the

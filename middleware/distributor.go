@@ -534,7 +534,9 @@ func countTopLevelJSONKey(data []byte, target string) int {
 				for cursor < len(data) && (data[cursor] == ' ' || data[cursor] == '\t' || data[cursor] == '\r' || data[cursor] == '\n') {
 					cursor++
 				}
-				if cursor < len(data) && data[cursor] == ':' && key == target {
+				// Case-insensitive: Go's decoder matches "Model" to the model field, so a
+				// body carrying both spellings could be read two ways downstream.
+				if cursor < len(data) && data[cursor] == ':' && strings.EqualFold(key, target) {
 					count++
 				}
 				expectingKey = false
@@ -966,7 +968,9 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 // its providers may use prompts for their own purposes. The guest key's owner
 // is delegated: the chat BFF checks each guest's own consent before relaying.
 func freeModelAllowed(c *gin.Context, requestedModel string) bool {
-	if !common.FreeConsentEnforcementEnabled || !notify.IsFreeModel(requestedModel) {
+	// Folded too: the distributor routes "glm-5.3-flash:fre_e" to the :free model.
+	isFree := notify.IsFreeModel(requestedModel) || strings.HasSuffix(common.ModelNameFoldKey(requestedModel), ":free")
+	if !common.FreeConsentEnforcementEnabled || !isFree {
 		return true
 	}
 	if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.FreeConsentDelegated {

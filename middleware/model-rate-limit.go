@@ -245,28 +245,32 @@ func perModelRateLimit(c *gin.Context) bool {
 		types.ClampFreeRateLimitWindowPct(userSetting.FreeRateLimitWindowPct) >= types.MaxFreeRateLimitWindowPct {
 		return true
 	}
+	// Read the model exactly as the distributor does: a second reader that matched
+	// keys case-insensitively let {"model":"x:free","Model":"y"} limit y and serve x.
 	var mr ModelRequest
-	// Gemini native routes carry the model in the URL, not the body; reading only the
-	// body let every /v1beta/models/<id>:generateContent call skip the limit.
-	if p := c.Request.URL.Path; strings.HasPrefix(p, "/v1beta/models/") || strings.HasPrefix(p, "/v1/models/") {
-		mr.Model = extractModelNameFromGeminiPath(p)
-	} else if err := common.UnmarshalBodyReusable(c, &mr); err != nil {
-		return true
+	path := c.Request.URL.Path
+	switch {
+	case strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/"):
+		mr.Model = extractModelNameFromGeminiPath(path)
+	case strings.HasPrefix(path, "/v1/realtime"):
+		mr.Model = c.Query("model")
+	default:
+		req, err := getModelFromRequest(c)
+		if err != nil {
+			// The distributor refuses the same body, so nothing is served.
+			return true
+		}
+		mr = *req
 	}
 	if mr.Model == "" {
 		return true
 	}
-	_, successMaxCount, windowMinutes, found := setting.GetModelRateLimit(mr.Model)
-	// The distributor routes "K2-HORIZON:FREE" or "k2_horizon:free" to the served
-	// model; limiting only the exact name let every such variant run unlimited. Only
-	// free ids carry limits and the colon survives every variant, so paid traffic
-	// skips the scan.
-	if !found && strings.Contains(strings.ToLower(mr.Model), ":free") {
-		if resolved, ok := model.ResolveModelNameVariant(mr.Model); ok {
-			mr.Model = resolved
-			_, successMaxCount, windowMinutes, found = setting.GetModelRateLimit(resolved)
-		}
+	limited, found := setting.ResolveRateLimitedModel(mr.Model)
+	if !found {
+		return true
 	}
+	mr.Model = limited
+	_, successMaxCount, windowMinutes, found := setting.GetModelRateLimit(mr.Model)
 	if !found || successMaxCount <= 0 {
 		return true
 	}
