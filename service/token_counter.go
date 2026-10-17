@@ -126,9 +126,17 @@ func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relayco
 		shouldFetchFiles = false
 	}
 
+	// One request carried no limit on URL parts, and each may be 64MB: past this many
+	// bytes the remaining files get the default estimate instead of a download.
+	const maxFetchedBytes = 128 << 20
+	var fetchedBytes int64
+
 	// 使用统一的文件服务获取文件类型
 	for _, file := range meta.Files {
 		if file.Source == nil {
+			continue
+		}
+		if file.Source.IsURL() && fetchedBytes >= maxFetchedBytes {
 			continue
 		}
 
@@ -145,6 +153,9 @@ func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relayco
 				continue
 			}
 			file.FileType = DetectFileType(cachedData.MimeType)
+			if file.Source.IsURL() {
+				fetchedBytes += cachedData.Size
+			}
 		}
 	}
 
