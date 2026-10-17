@@ -1252,6 +1252,14 @@ func UpdateSelf(c fuego.ContextNoBody) (dto.ApiResponse, error) {
 		user.Password = ""
 		cleanUser.Password = ""
 	}
+	// Password reset falls back to the username for accounts without an email, so
+	// renaming to an address you control and resetting took over such an account.
+	if strings.Contains(cleanUser.Username, "@") {
+		current, err := model.GetUserById(cleanUser.Id, false)
+		if err != nil || current.Username != cleanUser.Username {
+			return dto.FailAny("Username cannot contain @")
+		}
+	}
 	updatePassword, err := checkUpdatePassword(ginCtx, user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
 		return dto.FailAny(err.Error())
