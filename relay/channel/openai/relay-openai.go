@@ -68,6 +68,26 @@ func streamHadOutput(stats *StreamOutputStats, toolCount int) bool {
 	return stats.ReasoningChars > 0 && stats.FinishReason == constant.FinishReasonStop
 }
 
+// clientCappedOutput reports whether the caller set its own output ceiling. A
+// reasoning-only reply cut by that ceiling is what they asked for: refunding it as
+// empty let a small max_tokens buy a model's reasoning for free.
+func clientCappedOutput(info *relaycommon.RelayInfo) bool {
+	r, ok := info.Request.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return false
+	}
+	return (r.MaxTokens != nil && *r.MaxTokens > 0) || (r.MaxCompletionTokens != nil && *r.MaxCompletionTokens > 0)
+}
+
+func responseHasReasoning(resp *dto.OpenAITextResponse) bool {
+	for i := range resp.Choices {
+		if meaningfulRunes(resp.Choices[i].Message.GetReasoningContent()) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, forceFormat bool, thinkToContent bool) error {
 	if data == "" {
 		return nil
@@ -358,7 +378,8 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	contentFiltered := streamFinishedOnContentFilter(lastStreamData)
 	emptyResponse := info.RelayFormat == types.RelayFormatOpenAI &&
 		operation_setting.GetMonitorSetting().DisableOnEmptyResponse &&
-		!streamHadOutput(&outputStats, toolCount)
+		!streamHadOutput(&outputStats, toolCount) &&
+		!(clientCappedOutput(info) && outputStats.ReasoningChars > 0)
 
 	// Case (b): the opener chunks were buffered (streamingStarted stayed false), so
 	// nothing was flushed and the response is uncommitted. Return a retryable error -
@@ -624,7 +645,8 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	// text is blank to the reader and fails over, without counting against the lane.
 	if info.RelayFormat == types.RelayFormatOpenAI &&
 		operation_setting.GetMonitorSetting().DisableOnEmptyResponse &&
-		!OpenAIResponseHasOutput(&simpleResponse) {
+		!OpenAIResponseHasOutput(&simpleResponse) &&
+		!(clientCappedOutput(info) && responseHasReasoning(&simpleResponse)) {
 		return nil, types.NewOpenAIError(
 			errors.New(emptyResponseMessage(contentFiltered)),
 			types.ErrorCodeChannelEmptyResponse, http.StatusTooManyRequests,
