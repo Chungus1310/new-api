@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,12 +44,47 @@ func wrapMediaLinks(c *gin.Context) bool {
 
 // MarkGeneratedMedia marks the generated media in a response body or stream chunk.
 func MarkGeneratedMedia(c *gin.Context, body []byte) []byte {
-	return aimark.RewriteBody(body, wrapMediaLinks(c))
+	return aimark.RewriteBodyKnown(body, wrapMediaLinks(c), requestLinks(c))
 }
 
 // MarkGeneratedMediaString is MarkGeneratedMedia for string payloads.
 func MarkGeneratedMediaString(c *gin.Context, s string) string {
-	return aimark.RewriteString(s, wrapMediaLinks(c))
+	return aimark.RewriteString(s, wrapMediaLinks(c), requestLinks(c))
+}
+
+const requestLinksKey = "aimark_request_links"
+
+var requestURLPattern = regexp.MustCompile(`https?:(?:\\/|/)(?:[^\s"'<>()\\]|\\/|\\u[0-9a-fA-F]{4})+`)
+
+// requestLinks is the set of http(s) links the request body carried. A model
+// that repeats one (a character card sprite, an image the user sent) did not
+// generate it, so it stays unwrapped and keeps working where frontends only
+// embed their own hosts. Computed once per request.
+func requestLinks(c *gin.Context) aimark.KnownLink {
+	if c == nil {
+		return nil
+	}
+	if value, ok := c.Get(requestLinksKey); ok {
+		known, _ := value.(aimark.KnownLink)
+		return known
+	}
+	links := map[string]bool{}
+	if storage, err := common.GetBodyStorage(c); err == nil && !storage.IsDisk() {
+		if body, err := storage.Bytes(); err == nil {
+			for _, m := range requestURLPattern.FindAll(body, -1) {
+				var raw string
+				if json.Unmarshal(append(append([]byte{'"'}, m...), '"'), &raw) == nil {
+					links[raw] = true
+				}
+			}
+		}
+	}
+	var known aimark.KnownLink
+	if len(links) > 0 {
+		known = func(rawURL string) bool { return links[rawURL] }
+	}
+	c.Set(requestLinksKey, known)
+	return known
 }
 
 const streamCarryKey = "aimark_stream_carry"

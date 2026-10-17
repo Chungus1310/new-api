@@ -88,11 +88,16 @@ func isHTTPURL(s string) bool {
 	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
 }
 
+// KnownLink reports a link the request already contained. The model only copied
+// it (a character card sprite, an image the user sent), so it is not generated
+// output and stays as it is.
+type KnownLink func(rawURL string) bool
+
 // rewriteJSONString swaps a quoted JSON string holding an image link for the
 // rewritten link, also quoted.
-func rewriteJSONString(quoted []byte) ([]byte, bool) {
+func rewriteJSONString(quoted []byte, known KnownLink) ([]byte, bool) {
 	var raw string
-	if json.Unmarshal(quoted, &raw) != nil || !isHTTPURL(raw) {
+	if json.Unmarshal(quoted, &raw) != nil || !isHTTPURL(raw) || (known != nil && known(raw)) {
 		return nil, false
 	}
 	rewritten := RewriteLink(raw)
@@ -105,9 +110,9 @@ func rewriteJSONString(quoted []byte) ([]byte, bool) {
 
 // rewriteQuotedLink rewrites the quoted link captured by pattern's first group,
 // keeping whatever follows it in the match.
-func rewriteQuotedLink(pattern *regexp.Regexp, m []byte) []byte {
+func rewriteQuotedLink(pattern *regexp.Regexp, m []byte, known KnownLink) []byte {
 	sub := pattern.FindSubmatchIndex(m)
-	encoded, ok := rewriteJSONString(m[sub[2]:sub[3]])
+	encoded, ok := rewriteJSONString(m[sub[2]:sub[3]], known)
 	if !ok {
 		return m
 	}
@@ -116,15 +121,15 @@ func rewriteQuotedLink(pattern *regexp.Regexp, m []byte) []byte {
 	return append(out, m[sub[3]:]...)
 }
 
-func rewriteLinks(body []byte) []byte {
+func rewriteLinks(body []byte, known KnownLink) []byte {
 	if bytes.Contains(body, []byte(`"image_url"`)) {
 		body = imageURLPattern.ReplaceAllFunc(body, func(m []byte) []byte {
-			return rewriteQuotedLink(imageURLPattern, m)
+			return rewriteQuotedLink(imageURLPattern, m, known)
 		})
 	}
 	if bytes.Contains(body, []byte(`"source"`)) && bytes.Contains(body, []byte(`"url"`)) {
 		body = claudeImageURLPattern.ReplaceAllFunc(body, func(m []byte) []byte {
-			return rewriteQuotedLink(claudeImageURLPattern, m)
+			return rewriteQuotedLink(claudeImageURLPattern, m, known)
 		})
 	}
 	if bytes.Contains(body, []byte(`"fileUri"`)) || bytes.Contains(body, []byte(`"file_uri"`)) {
@@ -134,7 +139,7 @@ func rewriteLinks(body []byte) []byte {
 				return m
 			}
 			out := append([]byte(nil), m[:loc[0]]...)
-			out = append(out, rewriteQuotedLink(fileURIPattern, m[loc[0]:loc[1]])...)
+			out = append(out, rewriteQuotedLink(fileURIPattern, m[loc[0]:loc[1]], known)...)
 			return append(out, m[loc[1]:]...)
 		})
 	}
@@ -142,7 +147,7 @@ func rewriteLinks(body []byte) []byte {
 		body = markdownImagePattern.ReplaceAllFunc(body, func(m []byte) []byte {
 			sub := markdownImagePattern.FindSubmatchIndex(m)
 			quoted := append(append([]byte{'"'}, m[sub[2]:sub[3]]...), '"')
-			encoded, ok := rewriteJSONString(quoted)
+			encoded, ok := rewriteJSONString(quoted, known)
 			if !ok {
 				return m
 			}
@@ -152,7 +157,7 @@ func rewriteLinks(body []byte) []byte {
 		})
 	}
 	if bytes.Contains(body, []byte(`"url"`)) && dataArrayPattern.Match(body) {
-		body = rewriteImageItemURLs(body)
+		body = rewriteImageItemURLs(body, known)
 	}
 	return body
 }
@@ -173,7 +178,7 @@ type byteSpan struct{ start, end int }
 // rewriteImageItemURLs rewrites data[].url of an images API response. It walks the
 // tokens instead of matching text so that url fields of other shapes (search results,
 // citations) stay untouched.
-func rewriteImageItemURLs(body []byte) []byte {
+func rewriteImageItemURLs(body []byte, known KnownLink) []byte {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return body
@@ -212,7 +217,7 @@ func rewriteImageItemURLs(body []byte) []byte {
 	var out bytes.Buffer
 	last := 0
 	for _, span := range spans {
-		encoded, ok := rewriteJSONString(body[span.start:span.end])
+		encoded, ok := rewriteJSONString(body[span.start:span.end], known)
 		if !ok {
 			continue
 		}

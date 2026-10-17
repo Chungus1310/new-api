@@ -215,11 +215,16 @@ var (
 // as a data URL or as a base64 JSON field, and with links set hands image links to
 // LinkRewriter. Bodies without such content are returned as is without scanning further.
 func RewriteBody(body []byte, links bool) []byte {
+	return RewriteBodyKnown(body, links, nil)
+}
+
+// RewriteBodyKnown is RewriteBody that leaves links the request already held alone.
+func RewriteBodyKnown(body []byte, links bool, known KnownLink) []byte {
 	if containsAny(body, triggers) {
 		body = rewriteEmbedded(body)
 	}
 	if links && LinkRewriter != nil && containsAny(body, linkTriggers) {
-		body = rewriteLinks(body)
+		body = rewriteLinks(body, known)
 	}
 	return body
 }
@@ -246,16 +251,16 @@ func rewriteEmbedded(body []byte) []byte {
 }
 
 // RewriteString is RewriteBody for string payloads.
-func RewriteString(s string, links bool) string {
+func RewriteString(s string, links bool, known KnownLink) string {
 	for _, t := range triggers {
 		if strings.Contains(s, string(t)) {
-			return string(RewriteBody([]byte(s), links))
+			return string(RewriteBodyKnown([]byte(s), links, known))
 		}
 	}
 	if links && LinkRewriter != nil {
 		for _, t := range linkTriggers {
 			if strings.Contains(s, string(t)) {
-				return string(RewriteBody([]byte(s), links))
+				return string(RewriteBodyKnown([]byte(s), links, known))
 			}
 		}
 	}
