@@ -273,6 +273,17 @@ func HandleOAuth(c *gin.Context) {
 	// that started it, so it is checked against the session recorded in the flow.
 	externalVerify := pendingFlow.Intent == model.AuthFlowIntentVerify && redirectURI != ""
 	if externalBind {
+		// The bind completes here, before the frontend sees anything, so this is the
+		// only place to tie it to the browser that started it: an authorize URL built
+		// for the attacker's bind state, opened by a victim, bound the victim's identity
+		// to the attacker's account.
+		if flowCookie, err := c.Cookie("oauth_bind_flow"); err != nil || flowCookie != state {
+			if setupOAuthErrorRedirect(c, redirectURI, "This link was not started from your browser. Start the binding again from your account settings.") {
+				return
+			}
+			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
 		consumeMatch.UserId = pendingFlow.UserId
 	} else if externalVerify {
 		identity := pendingPayload.SessionIdentity
