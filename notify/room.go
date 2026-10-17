@@ -85,12 +85,18 @@ func ValidRoomTopic(topic string) bool {
 	return ValidTopic(topic)
 }
 
-// rejectRoomWildcards drops any room-namespaced pattern that is not an exact
-// room id. Non-room topics pass through untouched.
+// rejectRoomWildcards drops any pattern that could match a room other than one
+// exact room id. Checking only patterns that start with "room:" let "ro*" or "*x"
+// subscribe to, post into and delete every room.
 func rejectRoomWildcards(topics []string) []string {
 	out := make([]string, 0, len(topics))
 	for _, t := range topics {
-		if strings.HasPrefix(t, RoomTopicPrefix) && !ValidRoomTopic(t) {
+		if i := strings.IndexByte(t, '*'); i >= 0 {
+			prefix := t[:i]
+			if strings.HasPrefix(prefix, RoomTopicPrefix) || strings.HasPrefix(RoomTopicPrefix, prefix) {
+				continue
+			}
+		} else if strings.HasPrefix(t, RoomTopicPrefix) && !ValidRoomTopic(t) {
 			continue
 		}
 		out = append(out, t)
