@@ -321,6 +321,7 @@ func setupLoginAndRedirect(user *model.User, c *gin.Context, redirectURI string)
 		Username:        user.Username,
 		DisplayName:     user.DisplayName,
 		Role:            user.Role,
+		State:           c.Query("state"),
 	})
 	if err != nil {
 		common.ApiError(c, err)
@@ -447,6 +448,7 @@ func ExchangeOAuthCode(c fuego.ContextWithBody[dto.OAuthExchangeRequest]) (*dto.
 		ProofToken:      data.ProofToken,
 		ProofExpiresAt:  data.ProofExpiresAt,
 		Scope:           data.Scope,
+		State:           data.State,
 	})
 }
 

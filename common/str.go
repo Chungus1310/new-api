@@ -218,6 +218,7 @@ type OAuthExchangeData struct {
 	ProofToken      string `json:"proof_token,omitempty"`
 	ProofExpiresAt  int64  `json:"proof_expires_at,omitempty"`
 	Scope           string `json:"scope,omitempty"`
+	State           string `json:"state,omitempty"`
 }
 
 func StoreOAuthExchangeCode(data *OAuthExchangeData) (string, error) {

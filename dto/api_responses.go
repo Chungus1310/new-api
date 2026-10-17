@@ -76,6 +76,10 @@ type OAuthExchangeData struct {
 	ProofToken     string `json:"proof_token,omitempty"`
 	ProofExpiresAt int64  `json:"proof_expires_at,omitempty"`
 	Scope          string `json:"scope,omitempty"`
+	// The OAuth state of the flow that minted a login code. The frontend compares it
+	// with the state its own browser started, so a code captured from someone else's
+	// login cannot sign a victim's browser into that account.
+	State string `json:"state,omitempty"`
 }
 
 // --- Partial annotation types for unconvertible routes ---
