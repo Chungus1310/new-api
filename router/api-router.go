@@ -55,18 +55,21 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		dto.Get(publicPricing, "/pricing/model-groups", controller.GetPricingModelGroups, dto.ModelQuery())
 		dto.Get(publicPricing, "/pricing/catalog/model", controller.GetPricingCatalogModel, dto.ModelQuery())
 
-		publicPerfMetrics := dto.NewRouter(engine, apiRouter.Group("", middleware.TryUserAuth()), "PerfMetrics", secPublic())
+		publicPerfMetrics := dto.NewRouter(engine, apiRouter.Group("", middleware.InflightLimit(middleware.InflightAnalytics), middleware.TryUserAuth()), "PerfMetrics", secPublic())
 		dto.GetP(publicPerfMetrics, "/perf-metrics/summary", controller.GetPerfMetricsSummary)
 		dto.GetP(publicPerfMetrics, "/perf-metrics", controller.GetPerfMetrics)
 
-		publicRankings := dto.NewRouter(engine, apiRouter, "Rankings", secPublic())
+		publicRankings := dto.NewRouter(engine, apiRouter.Group("", middleware.InflightLimit(middleware.InflightAnalytics)), "Rankings", secPublic())
 		dto.GetP(publicRankings, "/rankings", controller.GetRankings)
 		dto.GetP(publicRankings, "/rankings/model", controller.GetModelRanking)
 
 		// Aggregate platform totals and model health, both rendered to anonymous
 		// visitors on the public stats and status pages. Neither reads user context.
 		publicStats := dto.NewRouter(engine, apiRouter.Group("", middleware.InflightLimit(middleware.InflightPublic), middleware.TryUserAuth()), "Stats", secPublic())
-		dto.GetP(publicStats, "/data/summary", controller.GetQuotaDataSummary)
+		// Its own slot pool: every distinct hour is a fresh quota_data scan, and sharing
+		// the public pool let a flood of them turn the pricing and status pages into 429s.
+		publicDataSummary := dto.NewRouter(engine, apiRouter.Group("", middleware.InflightLimit(middleware.InflightAnalytics), middleware.TryUserAuth()), "Stats", secPublic())
+		dto.GetP(publicDataSummary, "/data/summary", controller.GetQuotaDataSummary)
 		dto.Get(publicStats, "/model_status/components", controller.GetModelStatusComponents)
 		dto.GetP(publicStats, "/model_status/buckets", controller.GetModelStatusBuckets)
 		dto.GetP(publicStats, "/model_status/page_compact", controller.GetModelStatusPageCompact)

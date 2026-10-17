@@ -22,6 +22,9 @@ type inflightScope struct {
 var (
 	InflightRelay  = &inflightScope{name: "relay", limit: func() int { return common.InflightLimitRelay }}
 	InflightPublic = &inflightScope{name: "public", limit: func() int { return common.InflightLimitPublic }}
+	// Anonymous aggregations over quota_data and perf_metrics: a handful at once is
+	// plenty for the pages that use them, and a flood of them exhausted Postgres.
+	InflightAnalytics = &inflightScope{name: "analytics", limit: func() int { return 8 }}
 )
 
 func (s *inflightScope) tryAcquire(limit int64) bool {
@@ -81,7 +84,8 @@ func rejectInflight(c *gin.Context, scope *inflightScope) {
 
 func inflightCounts() map[string]int64 {
 	return map[string]int64{
-		InflightRelay.name:  InflightRelay.cur.Load(),
-		InflightPublic.name: InflightPublic.cur.Load(),
+		InflightRelay.name:     InflightRelay.cur.Load(),
+		InflightPublic.name:    InflightPublic.cur.Load(),
+		InflightAnalytics.name: InflightAnalytics.cur.Load(),
 	}
 }

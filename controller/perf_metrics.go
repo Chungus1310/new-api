@@ -1,6 +1,11 @@
 package controller
 
 import (
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,6 +16,7 @@ import (
 
 	"github.com/go-fuego/fuego"
 	"github.com/samber/lo"
+	"golang.org/x/sync/singleflight"
 )
 
 func GetPerfMetricsSummary(c fuego.ContextWithParams[dto.GetPerfMetricsSummaryParams]) (*dto.Response[perfmetrics.SummaryAllResult], error) {
@@ -28,11 +34,60 @@ func GetPerfMetricsSummary(c fuego.ContextWithParams[dto.GetPerfMetricsSummaryPa
 		return dto.Fail[perfmetrics.SummaryAllResult]("Invalid parameters")
 	}
 	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
-	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups, recentModels...)
+	sorted := slices.Clone(recentModels)
+	slices.Sort(sorted)
+	key := strconv.Itoa(hours) + "|" + strings.Join(sorted, ",")
+	result, err := cachedPublicPerfSummary(key, func() (perfmetrics.SummaryAllResult, error) {
+		return perfmetrics.QuerySummaryAll(hours, activeGroups, recentModels...)
+	})
 	if err != nil {
 		return dto.Fail[perfmetrics.SummaryAllResult](err.Error())
 	}
 	return dto.Ok(result)
+}
+
+type publicPerfSummaryItem struct {
+	expiresAt time.Time
+	data      perfmetrics.SummaryAllResult
+}
+
+var (
+	publicPerfSummaryMu     sync.Mutex
+	publicPerfSummaryCache  = map[string]publicPerfSummaryItem{}
+	publicPerfSummaryBuilds singleflight.Group
+)
+
+// cachedPublicPerfSummary serves the public summary for a minute per query: each call
+// was up to 51 uncached aggregations, open to anonymous callers.
+func cachedPublicPerfSummary(key string, build func() (perfmetrics.SummaryAllResult, error)) (perfmetrics.SummaryAllResult, error) {
+	publicPerfSummaryMu.Lock()
+	if item, ok := publicPerfSummaryCache[key]; ok && time.Now().Before(item.expiresAt) {
+		publicPerfSummaryMu.Unlock()
+		return item.data, nil
+	}
+	publicPerfSummaryMu.Unlock()
+	built, err, _ := publicPerfSummaryBuilds.Do(key, func() (any, error) {
+		data, err := build()
+		if err != nil {
+			return nil, err
+		}
+		publicPerfSummaryMu.Lock()
+		// Keys are caller-chosen model lists; drop everything rather than grow forever.
+		if len(publicPerfSummaryCache) >= 512 {
+			clear(publicPerfSummaryCache)
+		}
+		publicPerfSummaryCache[key] = publicPerfSummaryItem{expiresAt: time.Now().Add(time.Minute), data: data}
+		publicPerfSummaryMu.Unlock()
+		return data, nil
+	})
+	if err != nil {
+		return perfmetrics.SummaryAllResult{}, err
+	}
+	data, ok := built.(perfmetrics.SummaryAllResult)
+	if !ok {
+		return perfmetrics.SummaryAllResult{}, fmt.Errorf("unexpected perf summary result %T", built)
+	}
+	return data, nil
 }
 
 func GetPerfMetrics(c fuego.ContextWithParams[dto.GetPerfMetricsParams]) (*dto.Response[perfmetrics.QueryResult], error) {
