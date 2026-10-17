@@ -26,8 +26,10 @@ func SetVideoRouter(router *gin.Engine, engine *fuego.Engine) {
 	videoSharedRouter.Use(middleware.TokenAuth())
 	videoSharedRouter.Use(middleware.SystemPerformanceCheck())
 	videoSubmit := dto.NewRouter(engine, videoSharedRouter.Group("",
+		// Limited on every request, not only plugin-claimed ones: free image models are
+		// unclaimed and ran unlimited here while /v1/images held them to the free tier.
+		middleware.ModelRequestRateLimit(),
 		middleware.PinTaskPluginEndpoint(),
-		middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()),
 		middleware.PrepareTaskPluginEndpoint(),
 		middleware.Distribute(),
 	), "Video", secToken())

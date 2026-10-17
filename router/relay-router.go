@@ -169,7 +169,7 @@ func SetRelayRouter(router *gin.Engine, engine *fuego.Engine) {
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.InflightLimit(middleware.InflightRelay))
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	playgroundRouter.Use(middleware.UserAuth(), middleware.ModelRequestRateLimit(), middleware.Distribute())
 	pg := dto.NewRouter(engine, playgroundRouter, "Playground", secDashboard())
 	{
 		pg.GinPost("/chat/completions", controller.Playground, dto.GinResp[dto.ChatCompletionResponse]())

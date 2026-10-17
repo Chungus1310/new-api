@@ -496,19 +496,6 @@ func unsupportedProtocolFormMessage(candidates []pluginruntime.ProtocolBinding, 
 	return message + " Set " + strings.Join(forms, " or ") + "."
 }
 
-// TaskPluginEndpointOnly applies middleware only after a shared endpoint has
-// been claimed. This preserves the original middleware chain for unclaimed
-// video requests while enforcing the plugin route protections on claimed ones.
-func TaskPluginEndpointOnly(handler gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if _, exists := c.Get(pluginruntime.ContextKeyPinnedEndpoint); !exists {
-			c.Next()
-			return
-		}
-		handler(c)
-	}
-}
-
 // PrepareTaskPluginEndpoint normalizes a claimed shared request through the
 // candidates pinned before distribution, retaining only plugins that accept it.
 func PrepareTaskPluginEndpoint() gin.HandlerFunc {
