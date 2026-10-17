@@ -364,9 +364,20 @@ func handleSubscriptionTerminated(c *gin.Context, event *dto.CreemWebhookEvent, 
 	persistCreemCustomerID(event)
 
 	referenceId := event.ReferenceID()
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem %s received event_id=%s sub_id=%s reference_id=%s customer=%s product=%s", event.EventType, event.Id, event.Object.Id, referenceId, event.Object.Customer.Id, event.Object.Product.Id))
+	providerSubId := event.Object.Id
+	productId := event.Object.Product.Id
+	// A refund's object is the refund itself: its id is the refund's, and the
+	// subscription, product and our reference sit on its transaction, order and
+	// checkout. Read from the object, a refund matched nothing, and a customer
+	// holding two plans got the money back while the plan ran on.
+	if event.EventType == "refund.created" {
+		providerSubId = event.Object.Transaction.Subscription
+		productId = event.Object.Order.Product
+		referenceId = event.CheckoutReference()
+	}
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem %s received event_id=%s sub_id=%s reference_id=%s customer=%s product=%s", event.EventType, event.Id, providerSubId, referenceId, event.Object.Customer.Id, productId))
 
-	lockKey := event.Object.Id
+	lockKey := providerSubId
 	if lockKey == "" {
 		lockKey = referenceId
 	}
@@ -378,8 +389,8 @@ func handleSubscriptionTerminated(c *gin.Context, event *dto.CreemWebhookEvent, 
 	userId, subId, err := model.TerminateUserSubscriptionByCreem(model.CreemTerminationInput{
 		ReferenceId:            referenceId,
 		CreemCustomerId:        event.Object.Customer.Id,
-		CreemProductId:         event.Object.Product.Id,
-		ProviderSubscriptionId: event.Object.Id,
+		CreemProductId:         productId,
+		ProviderSubscriptionId: providerSubId,
 		Reason:                 event.EventType,
 	})
 	if err != nil {
