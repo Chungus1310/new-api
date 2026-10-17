@@ -195,7 +195,7 @@ const (
 	stepBroken
 )
 
-var linkTargetPrefixes = []string{"http://", "https://", "data:image/"}
+var linkTargetPrefixes = []string{"data:image/"}
 
 func (h *heldLink) step(ch byte) stepResult {
 	h.n++

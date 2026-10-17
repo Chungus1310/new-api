@@ -15,7 +15,7 @@ var LinkRewriter func(rawURL string) (string, bool)
 
 var (
 	linkTriggers = [][]byte{
-		[]byte(`"image_url"`), []byte(`"url"`), []byte("](http"), []byte(`"fileUri"`), []byte(`"file_uri"`),
+		[]byte(`"image_url"`), []byte(`"url"`), []byte(`"fileUri"`), []byte(`"file_uri"`),
 	}
 	// Chat completion image parts, as an object or as a bare string.
 	imageURLPattern = regexp.MustCompile(`"image_url"\s*:\s*(?:\{\s*"url"\s*:\s*)?("(?:[^"\\]|\\.)*")`)
@@ -25,8 +25,6 @@ var (
 	fileDataPattern      = regexp.MustCompile(`"(?:fileData|file_data)"\s*:\s*\{[^{}]*\}`)
 	fileURIPattern       = regexp.MustCompile(`"(?:fileUri|file_uri)"\s*:\s*("(?:[^"\\]|\\.)*")`)
 	imageMimeTypePattern = regexp.MustCompile(`"(?:mimeType|mime_type)"\s*:\s*"image/`)
-	// Markdown images inside a JSON string, where / and & may arrive escaped.
-	markdownImagePattern = regexp.MustCompile(`!\[[^\]"\n]*\]\((https?:(?:[^)\s"\\]|\\/|\\u[0-9a-fA-F]{4})+)\)`)
 	dataArrayPattern     = regexp.MustCompile(`"data"\s*:\s*\[`)
 	// Keys an images API data item carries; any other key means the array is not images.
 	imageItemKeys = []string{
@@ -136,19 +134,6 @@ func rewriteLinks(body []byte) []byte {
 			out := append([]byte(nil), m[:loc[0]]...)
 			out = append(out, rewriteQuotedLink(fileURIPattern, m[loc[0]:loc[1]])...)
 			return append(out, m[loc[1]:]...)
-		})
-	}
-	if bytes.Contains(body, []byte("](http")) {
-		body = markdownImagePattern.ReplaceAllFunc(body, func(m []byte) []byte {
-			sub := markdownImagePattern.FindSubmatchIndex(m)
-			quoted := append(append([]byte{'"'}, m[sub[2]:sub[3]]...), '"')
-			encoded, ok := rewriteJSONString(quoted)
-			if !ok {
-				return m
-			}
-			out := append([]byte(nil), m[:sub[2]]...)
-			out = append(out, encoded[1:len(encoded)-1]...)
-			return append(out, ')')
 		})
 	}
 	if bytes.Contains(body, []byte(`"url"`)) && dataArrayPattern.Match(body) {
