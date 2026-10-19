@@ -159,6 +159,8 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		dto.Get(userPublic, "/guest/free-consents", controller.GetGuestFreeConsents)
 		dto.PostB(userPublic, "/guest/free-consents", controller.GrantGuestFreeConsent)
 		dto.DeleteB(userPublic, "/guest/free-consents", controller.RevokeGuestFreeConsent)
+		dto.Get(userPublic, "/guest/own-purpose-objection", controller.GetGuestOwnPurposeObjection)
+		dto.PutB(userPublic, "/guest/own-purpose-objection", controller.SetGuestOwnPurposeObjection)
 
 		userPaymentPublic := dto.NewRouter(engine, userGroup, "Payment", secPublic())
 		userPaymentPublic.GinPost("/epay/notify", controller.EpayNotify, dto.GinResp[dto.MessageResponse]())
@@ -185,6 +187,8 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		dto.Get(self, "/self/free-consents", controller.GetFreeConsents)
 		dto.PostB(self, "/self/free-consents", controller.GrantFreeConsent)
 		dto.DeleteB(self, "/self/free-consents", controller.RevokeFreeConsent)
+		dto.Get(self, "/self/own-purpose-objection", controller.GetOwnPurposeObjection)
+		dto.PutB(self, "/self/own-purpose-objection", controller.SetOwnPurposeObjection)
 		dto.Delete(selfCred, "/self", controller.DeleteSelf)
 		dto.Get(selfCred, "/token", controller.GenerateAccessToken)
 		accessTokenGroup := selfGroup.Group("/access_tokens", middleware.SessionOnly())

@@ -7,7 +7,6 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/notify"
 
 	"github.com/go-fuego/fuego"
 )
@@ -54,10 +53,14 @@ func grantFreeConsent(c fuego.ContextWithBody[dto.FreeConsentGrantRequest], gues
 	if err != nil {
 		return dto.Fail[dto.MessageResponse]("Invalid parameters")
 	}
-	if !notify.IsFreeModel(req.Model) || strings.TrimSpace(req.Text) == "" {
-		return dto.Fail[dto.MessageResponse]("consent needs a free model and the text shown")
+	if strings.TrimSpace(req.Text) == "" {
+		return dto.Fail[dto.MessageResponse]("consent needs the text shown")
 	}
-	if err := model.GrantFreeConsent(userId, guestId, req.Model, req.Locale, req.Text); err != nil {
+	scope := model.RecordedConsentScope(req.Model)
+	if !scope.Required {
+		return dto.Fail[dto.MessageResponse]("this model needs no consent")
+	}
+	if err := model.GrantFreeConsent(userId, guestId, scope, req.Locale, req.Text); err != nil {
 		return dto.Fail[dto.MessageResponse](err.Error())
 	}
 	return dto.Ok(dto.MessageResponse{Message: "ok"})
@@ -100,4 +103,67 @@ func GrantGuestFreeConsent(c fuego.ContextWithBody[dto.FreeConsentGrantRequest])
 
 func RevokeGuestFreeConsent(c fuego.ContextWithBody[dto.FreeConsentRevokeRequest]) (*dto.Response[dto.MessageResponse], error) {
 	return revokeFreeConsent(c, true)
+}
+
+func getOwnPurposeObjection(c dto.FuegoCtx, guest bool) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	userId, guestId, ok := freeConsentSubject(c, guest)
+	if !ok {
+		return dto.Fail[dto.OwnPurposeObjectionData]("guest consent routes are limited to the chat service")
+	}
+	if guest {
+		objects, err := model.GuestObjectsToOwnPurposes(guestId)
+		if err != nil {
+			return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
+		}
+		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+	}
+	user, err := model.GetUserById(userId, true)
+	if err != nil {
+		return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
+	}
+	return dto.Ok(dto.OwnPurposeObjectionData{Objection: user.GetSetting().OwnPurposeObjection})
+}
+
+func setOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionRequest], guest bool) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	userId, guestId, ok := freeConsentSubject(c, guest)
+	if !ok {
+		return dto.Fail[dto.OwnPurposeObjectionData]("guest consent routes are limited to the chat service")
+	}
+	req, err := c.Body()
+	if err != nil || req.Objection == nil {
+		return dto.Fail[dto.OwnPurposeObjectionData]("Invalid parameters")
+	}
+	objects := *req.Objection
+	if guest {
+		if err := model.SetGuestOwnPurposeObjection(guestId, objects); err != nil {
+			return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
+		}
+		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+	}
+	user, err := model.GetUserById(userId, true)
+	if err != nil {
+		return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
+	}
+	setting := user.GetSetting()
+	setting.OwnPurposeObjection = objects
+	if err := model.UpdateUserSetting(user.Id, setting); err != nil {
+		return dto.Fail[dto.OwnPurposeObjectionData]("Update failed")
+	}
+	return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+}
+
+func GetOwnPurposeObjection(c fuego.ContextNoBody) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	return getOwnPurposeObjection(c, false)
+}
+
+func SetOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionRequest]) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	return setOwnPurposeObjection(c, false)
+}
+
+func GetGuestOwnPurposeObjection(c fuego.ContextNoBody) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	return getOwnPurposeObjection(c, true)
+}
+
+func SetGuestOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionRequest]) (*dto.Response[dto.OwnPurposeObjectionData], error) {
+	return setOwnPurposeObjection(c, true)
 }

@@ -23,3 +23,14 @@ type FreeConsentGrantRequest struct {
 type FreeConsentRevokeRequest struct {
 	Model string `json:"model" validate:"required,max=255"`
 }
+
+// OwnPurposeObjectionData is the caller's Art. 21 GDPR objection to providers
+// that use inputs for their own purposes.
+type OwnPurposeObjectionData struct {
+	Objection bool `json:"objection"`
+}
+
+// OwnPurposeObjectionRequest sets or clears the objection.
+type OwnPurposeObjectionRequest struct {
+	Objection *bool `json:"objection"`
+}

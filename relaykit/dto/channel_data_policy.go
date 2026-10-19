@@ -80,6 +80,11 @@ func (p *ChannelDataPolicy) UnsafeThirdCountry() bool {
 	return !IsEEACountry(p.SeatCountry) && !IsEUAdequacyCountry(p.SeatCountry)
 }
 
+// UsesInputsForOwnPurposes reports a provider that trains on or retains prompts.
+func (p *ChannelDataPolicy) UsesInputsForOwnPurposes() bool {
+	return p != nil && (p.Prompts == DataPolicyPromptsTrains || p.Prompts == DataPolicyPromptsRetains)
+}
+
 // Validate checks the stored values against the allowed vocabularies.
 func (p *ChannelDataPolicy) Validate() error {
 	if p == nil {

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // ApplyUpstreamBodyMetadata restores metadata that net/http cannot infer from
@@ -330,6 +333,10 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
+	requestBody, err = stripClientIdentifiers(info, requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("strip client identifiers failed: %w", err)
+	}
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -352,6 +359,48 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("do request failed: %w", err)
 	}
 	return resp, nil
+}
+
+var clientIdentifierPaths = []string{"user", "safety_identifier", "metadata.user_id"}
+
+// stripClientIdentifiers removes the ids a client attaches to a request before it
+// reaches a provider that trains on or retains inputs, pass-through included:
+// such a provider gets the content and nothing that links it to a person.
+func stripClientIdentifiers(info *common.RelayInfo, body io.Reader) (io.Reader, error) {
+	if body == nil || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() {
+		return body, nil
+	}
+	var raw []byte
+	var err error
+	if replayable, ok := body.(common2.ReplayableBody); ok {
+		reader, openErr := replayable.NewReader()
+		if openErr != nil {
+			return nil, openErr
+		}
+		raw, err = io.ReadAll(reader)
+		reader.Close()
+	} else {
+		raw, err = io.ReadAll(body)
+		body = bytes.NewReader(raw)
+	}
+	if err != nil {
+		return nil, err
+	}
+	stripped := raw
+	changed := false
+	for i, value := range gjson.GetManyBytes(raw, clientIdentifierPaths...) {
+		if !value.Exists() {
+			continue
+		}
+		if stripped, err = sjson.DeleteBytes(stripped, clientIdentifierPaths[i]); err != nil {
+			return nil, err
+		}
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+	return bytes.NewReader(stripped), nil
 }
 
 func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {

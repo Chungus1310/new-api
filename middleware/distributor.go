@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/notify"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -53,6 +52,13 @@ func Distribute() func(c *gin.Context) {
 			RequestPath: c.Request.URL.Path,
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
+		// Before any pin or affinity, and independent of the consent switch: an
+		// objection is honoured on every attempt of the request.
+		objects := false
+		if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.OwnPurposeObjection {
+			objects = true
+			constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
+		}
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, invalidRequestStatus(err), i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
@@ -70,6 +76,12 @@ func Distribute() func(c *gin.Context) {
 		}
 		if !freeModelAllowed(c, modelRequest.Model) {
 			return
+		}
+		if objects && modelRequest.Model != "" {
+			if scope := model.ConsentScopeFor(modelRequest.Model); scope.TrainsOrRetains && !scope.ServableWithoutOwnPurpose {
+				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorOwnPurposeObjected, map[string]any{"Model": modelRequest.Model}), types.ErrorCode("own_purpose_objected"))
+				return
+			}
 		}
 
 		if pin, found, overridden := constraints.ResolvedPin(); found {
@@ -964,24 +976,28 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 	return true
 }
 
-// freeModelAllowed enforces the documented consent a :free model needs, since
-// its providers may use prompts for their own purposes. The guest key's owner
-// is delegated: the chat BFF checks each guest's own consent before relaying.
+// freeModelAllowed enforces the documented consent a model needs when a provider
+// uses inputs for its own purposes from an unsafe third country, or when a :free
+// model has providers of unknown practice. A consent covers the provider set it
+// was given for, so a provider added later asks again. The guest key's owner is
+// delegated: the chat BFF checks each guest's own consent before relaying.
 func freeModelAllowed(c *gin.Context, requestedModel string) bool {
-	// Folded too: the distributor routes "glm-5.3-flash:fre_e" to the :free model.
-	isFree := notify.IsFreeModel(requestedModel) || strings.HasSuffix(common.ModelNameFoldKey(requestedModel), ":free")
-	if !common.FreeConsentEnforcementEnabled || !isFree {
+	if !common.FreeConsentEnforcementEnabled {
+		return true
+	}
+	scope := model.ConsentScopeFor(requestedModel)
+	if !scope.Required {
 		return true
 	}
 	if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.FreeConsentDelegated {
 		return true
 	}
-	switch model.FreeAccessFor(c.GetInt("id"), "", requestedModel) {
+	switch model.FreeAccessFor(c.GetInt("id"), "", scope.Model, scope.Providers) {
 	case model.FreeAccessBusiness:
 		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeBusiness), types.ErrorCode("free_models_business"))
 		return false
 	case model.FreeAccessNeedsConsent:
-		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": requestedModel, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(requestedModel)}), types.ErrorCode("free_consent_required"))
+		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required"))
 		return false
 	}
 	return true

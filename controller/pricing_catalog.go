@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -484,6 +483,7 @@ func catalogRow(
 		Uptime24h:              optionalFloat(uptime, hasUptime),
 		SuccessRate:            optionalFloat(success, hasSuccess),
 		AvgLatencyMs:           optionalFloat(latency, hasLatency),
+		OwnPurpose:             ownPurposeSummary(model.ConsentScopeForGroups(m.ModelName, m.EnableGroup)),
 	}
 }
 
@@ -775,18 +775,20 @@ func modelGroups(c fuego.ContextNoBody, pricing model.Pricing) ([]string, map[st
 		return ri < rj
 	})
 
-	policies := model.GroupDataPolicies()
-	providers := make(map[string]dto.GroupDataPolicy)
-	if servesAll {
-		maps.Copy(providers, policies)
-	} else {
-		for _, g := range pricing.EnableGroup {
-			if p, ok := policies[g]; ok {
-				providers[g] = p
-			}
-		}
+	return pricing.EnableGroup, groupRatio, chain, model.GroupPoliciesFor(pricing.EnableGroup)
+}
+
+// ownPurposeSummary is nil when no provider uses inputs for its own purposes and
+// no consent is needed, so most catalog rows carry no extra key.
+func ownPurposeSummary(scope model.ConsentScope) *dto.OwnPurposeSummary {
+	if !scope.TrainsOrRetains && !scope.Required {
+		return nil
 	}
-	return pricing.EnableGroup, groupRatio, chain, providers
+	return &dto.OwnPurposeSummary{
+		TrainsOrRetains: scope.TrainsOrRetains,
+		ConsentRequired: scope.Required,
+		Countries:       scope.Countries,
+	}
 }
 
 // GetPricingModelGroups returns the group panel for ONE model. Everything is
@@ -811,13 +813,14 @@ func GetPricingModelGroups(c fuego.ContextNoBody) (dto.PricingModelGroupsData, e
 	// An offline model still needs its seat countries, for the free model consent
 	// a user can give before it is back, so fall back to its disabled groups.
 	if len(groups) == 0 {
-		groups, providers = offlineModelGroups(pricing.ModelName)
+		groups, providers = model.OfflineModelGroups(pricing.ModelName)
 	}
 	return dto.PricingModelGroupsData{
 		EnableGroups:   groups,
 		GroupRatio:     groupRatio,
 		AutoChain:      chain,
 		GroupProviders: providers,
+		OwnPurpose:     ownPurposeSummary(model.ConsentScopeForGroups(pricing.ModelName, groups)),
 	}, nil
 }
 
@@ -842,6 +845,12 @@ func buildPricingCatalogModel(c fuego.ContextNoBody, pricing model.Pricing) dto.
 	d := ctx.derive(pricing)
 	md, modelType := d.md, d.modelType
 	row := catalogRow(pricing, d, ctx)
+	// The row only sees enabled groups; an offline model's consent still names
+	// the countries of the groups it returns to.
+	if len(groups) == 0 {
+		offline, _ := model.OfflineModelGroups(pricing.ModelName)
+		row.OwnPurpose = ownPurposeSummary(model.ConsentScopeForGroups(pricing.ModelName, offline))
+	}
 
 	// The list keeps only what a card renders; a caller that asked for ONE model
 	// wants all of it.
@@ -935,20 +944,4 @@ func newestFreeChatModel(models []dto.PricingCatalogModel) string {
 		return pick
 	}
 	return newest(func(m dto.PricingCatalogModel) bool { return m.IsFree })
-}
-
-func offlineModelGroups(modelName string) ([]string, map[string]dto.GroupDataPolicy) {
-	providers := map[string]dto.GroupDataPolicy{}
-	groups, err := model.GroupsListingModel(modelName)
-	if err != nil {
-		common.SysError("failed to list groups of offline model " + modelName + ": " + err.Error())
-		return []string{}, providers
-	}
-	policies := model.GroupDataPolicies()
-	for _, g := range groups {
-		if p, ok := policies[g]; ok {
-			providers[g] = p
-		}
-	}
-	return groups, providers
 }

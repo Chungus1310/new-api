@@ -88,6 +88,9 @@ type PricingCatalogModel struct {
 	// from it, so it is a routing fact rather than a display one. 5KB across the
 	// whole catalog (1.23 entries per model), so it rides every response.
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types" validate:"required"`
+	// Absent when no provider of the model trains on or retains inputs and no
+	// consent is needed.
+	OwnPurpose *OwnPurposeSummary `json:"own_purpose,omitempty"`
 	// Reliability over the last 24h: uptime is the share of probes that found a
 	// live channel, success rate the share of real requests that completed.
 	// Null when the model has no probe or no traffic in the window, which is
@@ -203,6 +206,18 @@ type PricingModelGroupsData struct {
 	AutoChain []string `json:"auto_chain" validate:"required"`
 	// Data-protection profile per group, only for groups with a recorded policy.
 	GroupProviders map[string]GroupDataPolicy `json:"group_providers" validate:"required"`
+	// Absent when no provider of the model trains on or retains inputs and no
+	// consent is needed.
+	OwnPurpose *OwnPurposeSummary `json:"own_purpose,omitempty"`
+}
+
+// OwnPurposeSummary tells whether a model's providers use inputs for their own
+// purposes (training, retention) and whether a transfer consent is needed first.
+// Countries are the seats of the providers the consent covers.
+type OwnPurposeSummary struct {
+	TrainsOrRetains bool     `json:"trains_or_retains"`
+	ConsentRequired bool     `json:"consent_required"`
+	Countries       []string `json:"countries" validate:"required"`
 }
 
 // PricingVendor mirrors model.PricingVendor for OpenAPI schema generation.

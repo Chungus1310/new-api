@@ -404,6 +404,7 @@ func migrateDB() error {
 		&PushSubscription{},
 		&UserAccessToken{},
 		&FreeConsent{},
+		&OwnPurposeObjection{},
 	)
 	if err != nil {
 		return err
@@ -433,6 +434,8 @@ func migrateDB() error {
 	ensureColumn("subscription_orders", &SubscriptionOrder{}, "provider_payment_id", "varchar(64) NOT NULL DEFAULT ''")
 	ensureColumn("user_subscriptions", &UserSubscription{}, "provider_subscription_id", "varchar(64) NOT NULL DEFAULT ''")
 	ensureColumn("users", &User{}, "register_ip_hash", "varchar(64) NULL")
+	ensureColumn("free_consents", &FreeConsent{}, "providers", "text NULL")
+	ensureColumn("free_consents", &FreeConsent{}, "countries", "text NULL")
 	backfillModelStatusLastUp()
 	backfillRegisterIpHash()
 	if err := migrateTokenGroupMappingShape(DB); err != nil {

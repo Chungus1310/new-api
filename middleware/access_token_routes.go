@@ -350,6 +350,12 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/user/setting":                       accessTokenScopeRule("profile:write"),
 	"PUT /api/token/guest-model-limits":            accessTokenSessionRule,
 	"PUT /api/user/self/timeout":                   accessTokenScopeRule("profile:write"),
+	"GET /api/user/self/own-purpose-objection":     accessTokenScopeRule("profile:read"),
+	"PUT /api/user/self/own-purpose-objection":     accessTokenScopeRule("profile:write"),
+	// A consent has to come from the person, never from a delegated token.
+	"GET /api/user/self/free-consents":    accessTokenSessionRule,
+	"POST /api/user/self/free-consents":   accessTokenSessionRule,
+	"DELETE /api/user/self/free-consents": accessTokenSessionRule,
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,

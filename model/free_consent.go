@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -10,10 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// FreeConsent documents a consent to one :free model under Art. 4 No. 11 GDPR.
+// FreeConsent documents a consent to one model under Art. 4 No. 11 GDPR.
 // Text is the dialog exactly as shown, because the consent is only provable
 // together with what the person agreed to. Exactly one of UserId and GuestId is
 // set; a guest is a browser identified by the chat BFF's guest cookie.
+// Providers and Countries are the sorted JSON arrays the consent covered,
+// computed by the gateway; provider tags are internal and never returned.
 type FreeConsent struct {
 	Id        int    `json:"id" gorm:"primaryKey"`
 	UserId    int    `json:"user_id" gorm:"index:idx_free_consent_user;not null;default:0"`
@@ -23,12 +26,15 @@ type FreeConsent struct {
 	Text      string `json:"-" gorm:"type:text;not null"`
 	CreatedAt int64  `json:"created_at" gorm:"bigint;not null"`
 	RevokedAt int64  `json:"revoked_at" gorm:"bigint;not null;default:0"`
+	Providers string `json:"-" gorm:"type:text"`
+	Countries string `json:"-" gorm:"type:text"`
 }
 
 const freeConsentCacheTTL = 30 * time.Second
 
 type freeConsentEntry struct {
-	models   map[string]bool
+	// Model to the union of provider sets its active consents covered.
+	models   map[string]map[string]bool
 	business bool
 	expires  time.Time
 }
@@ -66,13 +72,14 @@ const (
 	FreeAccessBusiness
 )
 
-// FreeAccessFor is the relay-path check; a lookup error denies.
-func FreeAccessFor(userId int, guestId string, modelName string) FreeAccess {
+// FreeAccessFor is the relay-path check: a consent counts only when it covered
+// every provider now serving the model. A lookup error denies.
+func FreeAccessFor(userId int, guestId string, modelName string, providers []string) FreeAccess {
 	subject := freeConsentSubject(userId, guestId)
 	entry, ok := loadFreeConsentEntry(subject)
 	// Only a cached yes is trusted: a consent just given on another replica must
 	// not be refused for the rest of this replica's TTL.
-	if !ok || (!entry.business && !entry.models[modelName]) {
+	if !ok || (!entry.business && !entry.covers(modelName, providers)) {
 		var err error
 		entry, err = buildFreeConsentEntry(userId, guestId)
 		if err != nil {
@@ -84,10 +91,25 @@ func FreeAccessFor(userId int, guestId string, modelName string) FreeAccess {
 	if entry.business {
 		return FreeAccessBusiness
 	}
-	if !entry.models[modelName] {
+	if !entry.covers(modelName, providers) {
 		return FreeAccessNeedsConsent
 	}
 	return FreeAccessAllowed
+}
+
+// covers is false for a consent recorded without a provider set while the model
+// now has providers: what it was given for cannot be shown.
+func (e freeConsentEntry) covers(modelName string, providers []string) bool {
+	stored, ok := e.models[modelName]
+	if !ok {
+		return false
+	}
+	for _, p := range providers {
+		if !stored[p] {
+			return false
+		}
+	}
+	return true
 }
 
 func loadFreeConsentEntry(subject string) (freeConsentEntry, bool) {
@@ -103,7 +125,7 @@ func loadFreeConsentEntry(subject string) (freeConsentEntry, bool) {
 }
 
 func buildFreeConsentEntry(userId int, guestId string) (freeConsentEntry, error) {
-	entry := freeConsentEntry{models: map[string]bool{}, expires: time.Now().Add(freeConsentCacheTTL)}
+	entry := freeConsentEntry{models: map[string]map[string]bool{}, expires: time.Now().Add(freeConsentCacheTTL)}
 	if guestId == "" {
 		var customerType string
 		if err := DB.Model(&User{}).Where("id = ?", userId).Select("customer_type").Scan(&customerType).Error; err != nil {
@@ -116,27 +138,96 @@ func buildFreeConsentEntry(userId int, guestId string) (freeConsentEntry, error)
 		return entry, err
 	}
 	for _, consent := range consents {
-		entry.models[consent.Model] = true
+		covered := entry.models[consent.Model]
+		if covered == nil {
+			covered = map[string]bool{}
+			entry.models[consent.Model] = covered
+		}
+		var providers []string
+		if consent.Providers != "" {
+			if err := common.UnmarshalJsonStr(consent.Providers, &providers); err != nil {
+				common.SysError("failed to parse providers of free consent " + strconv.Itoa(consent.Id) + ": " + err.Error())
+			}
+		}
+		for _, p := range providers {
+			covered[p] = true
+		}
 	}
 	return entry, nil
 }
 
 // GrantFreeConsent records a new consent; an earlier one for the same model is
-// revoked so each model has at most one active record.
-func GrantFreeConsent(userId int, guestId string, modelName, locale, text string) error {
+// revoked so each model has at most one active record. The provider set comes
+// from RecordedConsentScope, never from the caller.
+func GrantFreeConsent(userId int, guestId string, scope ConsentScope, locale, text string) error {
 	if (userId == 0) == (guestId == "") {
 		return errors.New("free consent needs exactly one of user and guest")
 	}
+	providers, err := consentSetJSON(scope.Providers)
+	if err != nil {
+		return err
+	}
+	countries, err := consentSetJSON(scope.Countries)
+	if err != nil {
+		return err
+	}
+	modelName := scope.Model
 	now := common.GetTimestamp()
 	where, arg := freeConsentScope(userId, guestId)
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&FreeConsent{}).Where(where, arg).Where("model = ?", modelName).Update("revoked_at", now).Error; err != nil {
 			return err
 		}
-		return tx.Create(&FreeConsent{UserId: userId, GuestId: guestId, Model: modelName, Locale: locale, Text: text, CreatedAt: now}).Error
+		return tx.Create(&FreeConsent{UserId: userId, GuestId: guestId, Model: modelName, Locale: locale, Text: text, CreatedAt: now, Providers: providers, Countries: countries}).Error
 	})
 	freeConsentCache.Delete(freeConsentSubject(userId, guestId))
 	return err
+}
+
+// consentSetJSON stores an empty set as "[]" so a recorded empty set stays
+// apart from a consent recorded before sets were kept.
+func consentSetJSON(values []string) (string, error) {
+	if values == nil {
+		values = []string{}
+	}
+	sorted := slices.Sorted(slices.Values(values))
+	raw, err := common.Marshal(sorted)
+	return string(raw), err
+}
+
+// BackfillFreeConsentProviders gives active consents recorded before provider
+// sets were kept the set current now, which is the one they were given for.
+// Runs once per start; only rows without a set are touched.
+func BackfillFreeConsentProviders() (int64, error) {
+	// An empty snapshot means the channels are not loaded, and writing "[]"
+	// then would void every consent once a provider is seen again.
+	if len(groupDataPolicyState().recipients) == 0 {
+		return 0, nil
+	}
+	pending := "revoked_at = 0 AND (providers IS NULL OR providers = '')"
+	var models []string
+	if err := DB.Model(&FreeConsent{}).Where(pending).Distinct("model").Pluck("model", &models).Error; err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, modelName := range models {
+		scope := RecordedConsentScope(modelName)
+		providers, err := consentSetJSON(scope.Providers)
+		if err != nil {
+			return total, err
+		}
+		countries, err := consentSetJSON(scope.Countries)
+		if err != nil {
+			return total, err
+		}
+		res := DB.Model(&FreeConsent{}).Where(pending).Where("model = ?", modelName).
+			Updates(map[string]any{"providers": providers, "countries": countries})
+		if res.Error != nil {
+			return total, res.Error
+		}
+		total += res.RowsAffected
+	}
+	return total, nil
 }
 
 // RevokeFreeConsent ends the consent for one model; the record stays as proof.

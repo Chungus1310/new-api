@@ -29,6 +29,7 @@ const (
 	MsgDistributorTokenModelForbidden          = "distributor.token_model_forbidden"
 	MsgDistributorFreeConsentRequired          = "distributor.free_consent_required"
 	MsgDistributorFreeBusiness                 = "distributor.free_business"
+	MsgDistributorOwnPurposeObjected           = "distributor.own_purpose_objected"
 	MsgDistributorModelNameRequired            = "distributor.model_name_required"
 	MsgDistributorInvalidPlayground            = "distributor.invalid_playground_request"
 	MsgDistributorGroupAccessDenied            = "distributor.group_access_denied"

@@ -37,6 +37,8 @@ const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
+	// The caller objected (Art. 21 GDPR) to providers that train on or retain inputs.
+	FilterOwnPurposeObjection ChannelFilterKind = "own_purpose_objected"
 )
 
 type ChannelFilter struct {
