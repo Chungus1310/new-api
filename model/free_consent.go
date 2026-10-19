@@ -35,7 +35,9 @@ const freeConsentCacheTTL = 30 * time.Second
 
 type freeConsentEntry struct {
 	// Model to the union of provider sets its active consents covered.
-	models   map[string]map[string]bool
+	models map[string]map[string]bool
+	// Aliases with an active provider consent.
+	aliases  map[string]bool
 	business bool
 	expires  time.Time
 }
@@ -73,8 +75,9 @@ const (
 	ConsentAccessBusiness
 )
 
-// ConsentAccessFor is the relay-path check: a consent counts only when it covered
-// every provider now serving the model. A lookup error denies.
+// ConsentAccessFor is the relay-path check: every provider now serving the model
+// needs an active provider consent or a model consent that covered it. A lookup
+// error denies.
 func ConsentAccessFor(userId int, guestId string, modelName string, providers []string) ConsentAccess {
 	subject := freeConsentSubject(userId, guestId)
 	entry, ok := loadFreeConsentEntry(subject)
@@ -98,15 +101,26 @@ func ConsentAccessFor(userId int, guestId string, modelName string, providers []
 	return ConsentAccessAllowed
 }
 
-// covers is false for a consent recorded without a provider set while the model
-// now has providers: what it was given for cannot be shown.
+// covers is false for a model consent recorded without a provider set while
+// the model now has providers: what it was given for cannot be shown.
 func (e freeConsentEntry) covers(modelName string, providers []string) bool {
-	stored, ok := e.models[modelName]
-	if !ok {
+	stored, hasModelConsent := e.models[modelName]
+	if !hasModelConsent && len(e.aliases) == 0 {
 		return false
 	}
+	if len(providers) == 0 {
+		return hasModelConsent
+	}
+	var aliases map[string]ProviderAlias
 	for _, p := range providers {
-		if !stored[p] {
+		if stored[p] {
+			continue
+		}
+		if aliases == nil {
+			aliases = ProviderAliasesFor(providers)
+		}
+		alias, ok := aliases[p]
+		if !ok || !e.aliases[alias.Alias] {
 			return false
 		}
 	}
@@ -126,13 +140,20 @@ func loadFreeConsentEntry(subject string) (freeConsentEntry, bool) {
 }
 
 func buildFreeConsentEntry(userId int, guestId string) (freeConsentEntry, error) {
-	entry := freeConsentEntry{models: map[string]map[string]bool{}, expires: time.Now().Add(freeConsentCacheTTL)}
+	entry := freeConsentEntry{models: map[string]map[string]bool{}, aliases: map[string]bool{}, expires: time.Now().Add(freeConsentCacheTTL)}
 	if guestId == "" {
 		var customerType string
 		if err := DB.Model(&User{}).Where("id = ?", userId).Select("customer_type").Scan(&customerType).Error; err != nil {
 			return entry, err
 		}
 		entry.business = customerType == CustomerTypeBusiness
+	}
+	providerConsents, err := ActiveProviderConsents(userId, guestId)
+	if err != nil {
+		return entry, err
+	}
+	for _, consent := range providerConsents {
+		entry.aliases[consent.Alias] = true
 	}
 	consents, err := ActiveFreeConsents(userId, guestId)
 	if err != nil {

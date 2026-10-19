@@ -405,6 +405,8 @@ func migrateDB() error {
 		&UserAccessToken{},
 		&FreeConsent{},
 		&OwnPurposeObjection{},
+		&ProviderAlias{},
+		&ProviderConsent{},
 	)
 	if err != nil {
 		return err

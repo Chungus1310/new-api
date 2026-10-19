@@ -40,6 +40,9 @@ var accessTokenExemptRoutes = []string{
 	"DELETE /api/user/guest/free-consents",
 	"GET /api/user/guest/own-purpose-objection",
 	"PUT /api/user/guest/own-purpose-objection",
+	"GET /api/user/guest/provider-consents",
+	"POST /api/user/guest/provider-consents",
+	"DELETE /api/user/guest/provider-consents",
 
 	// Anonymous account entry points.
 	"GET /api/verification",

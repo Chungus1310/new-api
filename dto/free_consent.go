@@ -36,3 +36,43 @@ type OwnPurposeObjectionData struct {
 type OwnPurposeObjectionRequest struct {
 	Objection *bool `json:"objection"`
 }
+
+// ProviderConsentItem is one provider that needs a consent, by its public alias.
+type ProviderConsentItem struct {
+	Alias           string   `json:"alias"`
+	Country         string   `json:"country"`
+	Unsafe          bool     `json:"unsafe"`
+	TrainsOrRetains bool     `json:"trains_or_retains"`
+	ModelCount      int      `json:"model_count"`
+	Models          []string `json:"models"`
+	// given, missing, or with ?model also model_consent: only an earlier model
+	// consent covers this provider for that model.
+	Status  string `json:"status"`
+	GivenAt int64  `json:"given_at,omitempty"`
+}
+
+// ProviderConsentListData lists providers; with ?model only that model's, plus
+// whether the model is covered.
+type ProviderConsentListData struct {
+	Model     string                `json:"model,omitempty"`
+	Covered   *bool                 `json:"covered,omitempty"`
+	Providers []ProviderConsentItem `json:"providers"`
+}
+
+// ProviderConsentGrantRequest names either aliases or a model, whose missing
+// providers are all granted. Text is the dialog exactly as shown and must name
+// every alias granted.
+type ProviderConsentGrantRequest struct {
+	Aliases []string `json:"aliases" validate:"max=500"`
+	Model   string   `json:"model" validate:"max=255"`
+	Locale  string   `json:"locale" validate:"max=16"`
+	Text    string   `json:"text" validate:"required,max=20000"`
+}
+
+type ProviderConsentGrantData struct {
+	Granted []string `json:"granted"`
+}
+
+type ProviderConsentRevokeRequest struct {
+	Alias string `json:"alias" validate:"required,max=16"`
+}

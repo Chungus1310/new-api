@@ -22,6 +22,11 @@ func StartFreeConsentPruner() {
 			} else if n > 0 {
 				common.SysLog(fmt.Sprintf("pruned %d guest objections past the guest cookie lifetime", n))
 			}
+			if n, err := model.PruneProviderConsents(time.Now()); err != nil {
+				common.SysError("provider consent prune failed: " + err.Error())
+			} else if n > 0 {
+				common.SysLog(fmt.Sprintf("pruned %d provider consent records past the proof period", n))
+			}
 			n, err := model.PruneFreeConsents(time.Now())
 			if err != nil {
 				common.SysError("free consent prune failed: " + err.Error())
