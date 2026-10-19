@@ -212,13 +212,9 @@ var RetryTimes = 0
 // costs nothing to retry, so the chain walks further before giving up.
 var FreeRetryTimes = 3
 
-// FreeConsentEnforcementEnabled refuses a :free model to anyone without a
-// recorded consent for it, and to business customers outright.
-var FreeConsentEnforcementEnabled = false
-
-// OwnPurposeEnabled switches on consent per provider set, the objection to
-// providers that train on or retain inputs, and identifier stripping for them.
-var OwnPurposeEnabled = false
+// ConsentEnforcementEnabled refuses a model that needs a consent to anyone
+// without one covering its providers, and to business customers outright.
+var ConsentEnforcementEnabled = false
 
 // MaxTotalRelayAttempts caps how many channels one request may be tried against
 // in total. RetryTimes is per-group once cross-group auto-retry resets the

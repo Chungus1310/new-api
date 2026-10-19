@@ -483,7 +483,7 @@ func catalogRow(
 		Uptime24h:              optionalFloat(uptime, hasUptime),
 		SuccessRate:            optionalFloat(success, hasSuccess),
 		AvgLatencyMs:           optionalFloat(latency, hasLatency),
-		OwnPurpose:             ownPurposeSummary(m.ModelName, m.EnableGroup),
+		OwnPurpose:             ownPurposeSummary(model.ConsentScopeForGroups(m.ModelName, m.EnableGroup)),
 	}
 }
 
@@ -778,13 +778,9 @@ func modelGroups(c fuego.ContextNoBody, pricing model.Pricing) ([]string, map[st
 	return pricing.EnableGroup, groupRatio, chain, model.GroupPoliciesFor(pricing.EnableGroup)
 }
 
-// ownPurposeSummary is nil while the feature is off, and when no provider uses
-// inputs for its own purposes and no consent is needed.
-func ownPurposeSummary(modelName string, groups []string) *dto.OwnPurposeSummary {
-	if !common.OwnPurposeEnabled {
-		return nil
-	}
-	scope := model.ConsentScopeForGroups(modelName, groups)
+// ownPurposeSummary is nil when no provider uses inputs for its own purposes and
+// no consent is needed, so most catalog rows carry no extra key.
+func ownPurposeSummary(scope model.ConsentScope) *dto.OwnPurposeSummary {
 	if !scope.TrainsOrRetains && !scope.Required {
 		return nil
 	}
@@ -828,7 +824,7 @@ func GetPricingModelGroups(c fuego.ContextNoBody) (dto.PricingModelGroupsData, e
 		GroupRatio:     groupRatio,
 		AutoChain:      chain,
 		GroupProviders: providers,
-		OwnPurpose:     ownPurposeSummary(pricing.ModelName, groups),
+		OwnPurpose:     ownPurposeSummary(model.ConsentScopeForGroups(pricing.ModelName, groups)),
 	}, nil
 }
 
@@ -855,9 +851,9 @@ func buildPricingCatalogModel(c fuego.ContextNoBody, pricing model.Pricing) dto.
 	row := catalogRow(pricing, d, ctx)
 	// The row only sees enabled groups; an offline model's consent still names
 	// the countries of the groups it returns to.
-	if len(groups) == 0 && common.OwnPurposeEnabled {
+	if len(groups) == 0 {
 		offline, _ := model.OfflineModelGroups(pricing.ModelName)
-		row.OwnPurpose = ownPurposeSummary(pricing.ModelName, offline)
+		row.OwnPurpose = ownPurposeSummary(model.ConsentScopeForGroups(pricing.ModelName, offline))
 	}
 
 	// The list keeps only what a card renders; a caller that asked for ONE model

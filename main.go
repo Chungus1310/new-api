@@ -361,6 +361,9 @@ func InitResources() error {
 		if err := model.MigrateRetiredFrontendOptions(); err != nil {
 			common.SysError(common.LogText("failed to migrate retired frontend options: %s", err.Error()))
 		}
+		if err := model.MigrateConsentEnforcementOption(); err != nil {
+			common.SysError(common.LogText("failed to migrate the consent enforcement option: %s", err.Error()))
+		}
 	}
 	model.InitOptionMap()
 

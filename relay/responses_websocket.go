@@ -903,23 +903,26 @@ func buildResponsesWSErrorPayload(eventID, streamID string, apiErr *types.NewAPI
 }
 
 // checkResponsesWSModelAccess applies the token model limit with the same name
-// matching as the HTTP distributor. Unlike HTTP, it also runs for requests
-// pinned to a channel: the check is stricter there on purpose, because a
-// persistent connection keeps serving the model after the pin was resolved.
+// matching as the HTTP distributor, then the same consent and objection rules.
+// Unlike HTTP, it also runs for requests pinned to a channel: the check is
+// stricter there on purpose, because a persistent connection keeps serving the
+// model after the pin was resolved.
 func checkResponsesWSModelAccess(c *gin.Context, modelName string) *types.NewAPIError {
-	if !common.GetContextKeyBool(c, appconstant.ContextKeyTokenModelLimitEnabled) {
-		return nil
+	if common.GetContextKeyBool(c, appconstant.ContextKeyTokenModelLimitEnabled) {
+		raw, ok := common.GetContextKey(c, appconstant.ContextKeyTokenModelLimit)
+		if !ok {
+			return types.NewErrorWithStatusCode(errors.New("token has no model access"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
+		tokenModelLimit, ok := raw.(map[string]bool)
+		if !ok {
+			tokenModelLimit = map[string]bool{}
+		}
+		if !middleware.TokenModelLimitAllows(tokenModelLimit, modelName) {
+			return types.NewErrorWithStatusCode(fmt.Errorf("token is not allowed to use model %s", modelName), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
 	}
-	raw, ok := common.GetContextKey(c, appconstant.ContextKeyTokenModelLimit)
-	if !ok {
-		return types.NewErrorWithStatusCode(errors.New("token has no model access"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
-	}
-	tokenModelLimit, ok := raw.(map[string]bool)
-	if !ok {
-		tokenModelLimit = map[string]bool{}
-	}
-	if !middleware.TokenModelLimitAllows(tokenModelLimit, modelName) {
-		return types.NewErrorWithStatusCode(fmt.Errorf("token is not allowed to use model %s", modelName), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	if message, code := middleware.ConsentRefusal(c, modelName); message != "" {
+		return types.NewErrorWithStatusCode(errors.New(message), code, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 	return nil
 }

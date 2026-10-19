@@ -14,16 +14,6 @@ func StartFreeConsentPruner() {
 		return
 	}
 	go func() {
-		if n, err := model.BackfillFreeConsentProviders(); err != nil {
-			common.SysError("free consent provider backfill failed: " + err.Error())
-		} else if n > 0 {
-			common.SysLog(fmt.Sprintf("recorded the provider set of %d earlier free consents", n))
-		}
-		if n, ran, err := model.RefreshFreeConsentProvidersOnce(); err != nil {
-			common.SysError("free consent provider refresh failed: " + err.Error())
-		} else if ran {
-			common.SysLog(fmt.Sprintf("refreshed the provider set of %d active free consents", n))
-		}
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for ; true; <-ticker.C {

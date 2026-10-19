@@ -65,17 +65,17 @@ func ActiveFreeConsents(userId int, guestId string) ([]FreeConsent, error) {
 	return consents, err
 }
 
-type FreeAccess int
+type ConsentAccess int
 
 const (
-	FreeAccessAllowed FreeAccess = iota
-	FreeAccessNeedsConsent
-	FreeAccessBusiness
+	ConsentAccessAllowed ConsentAccess = iota
+	ConsentAccessNeedsConsent
+	ConsentAccessBusiness
 )
 
-// FreeAccessFor is the relay-path check: a consent counts only when it covered
+// ConsentAccessFor is the relay-path check: a consent counts only when it covered
 // every provider now serving the model. A lookup error denies.
-func FreeAccessFor(userId int, guestId string, modelName string, providers []string) FreeAccess {
+func ConsentAccessFor(userId int, guestId string, modelName string, providers []string) ConsentAccess {
 	subject := freeConsentSubject(userId, guestId)
 	entry, ok := loadFreeConsentEntry(subject)
 	// Only a cached yes is trusted: a consent just given on another replica must
@@ -85,17 +85,17 @@ func FreeAccessFor(userId int, guestId string, modelName string, providers []str
 		entry, err = buildFreeConsentEntry(userId, guestId)
 		if err != nil {
 			common.SysError("failed to load free consents: " + err.Error())
-			return FreeAccessNeedsConsent
+			return ConsentAccessNeedsConsent
 		}
 		freeConsentCache.Store(subject, entry)
 	}
 	if entry.business {
-		return FreeAccessBusiness
+		return ConsentAccessBusiness
 	}
 	if !entry.covers(modelName, providers) {
-		return FreeAccessNeedsConsent
+		return ConsentAccessNeedsConsent
 	}
-	return FreeAccessAllowed
+	return ConsentAccessAllowed
 }
 
 // covers is false for a consent recorded without a provider set while the model
@@ -212,82 +212,6 @@ func consentSetJSON(values []string) (string, error) {
 	return string(raw), err
 }
 
-// BackfillFreeConsentProviders gives active consents recorded before provider
-// sets were kept the set current now, which is the one they were given for.
-// Runs once per start; only rows without a set are touched.
-func BackfillFreeConsentProviders() (int64, error) {
-	// An empty snapshot means the channels are not loaded, and writing "[]"
-	// then would void every consent once a provider is seen again.
-	if len(groupDataPolicyState().recipients) == 0 {
-		return 0, nil
-	}
-	pending := "revoked_at = 0 AND (providers IS NULL OR providers = '')"
-	var models []string
-	if err := DB.Model(&FreeConsent{}).Where(pending).Distinct("model").Pluck("model", &models).Error; err != nil {
-		return 0, err
-	}
-	var total int64
-	for _, modelName := range models {
-		scope := RecordedConsentScope(modelName)
-		providers, err := consentSetJSON(scope.Providers)
-		if err != nil {
-			return total, err
-		}
-		countries, err := consentSetJSON(scope.Countries)
-		if err != nil {
-			return total, err
-		}
-		res := DB.Model(&FreeConsent{}).Where(pending).Where("model = ?", modelName).
-			Updates(map[string]any{"providers": providers, "countries": countries})
-		if res.Error != nil {
-			return total, res.Error
-		}
-		total += res.RowsAffected
-	}
-	return total, nil
-}
-
-// The first backfill ran before channels carried a provider tag, so its sets
-// hold channel:<id> placeholders. This marker lets the refresh to tagged sets
-// run exactly once.
-const freeConsentProviderRefreshKey = "FreeConsentProviderRefresh20261019"
-
-// RefreshFreeConsentProvidersOnce replaces the provider and country sets of
-// every active consent with the current recorded scope, once per database.
-func RefreshFreeConsentProvidersOnce() (int64, bool, error) {
-	var done int64
-	if err := DB.Model(&Option{}).Where(&Option{Key: freeConsentProviderRefreshKey}).Count(&done).Error; err != nil {
-		return 0, false, err
-	}
-	if done > 0 || len(groupDataPolicyState().recipients) == 0 {
-		return 0, false, nil
-	}
-	var models []string
-	if err := DB.Model(&FreeConsent{}).Where("revoked_at = 0").Distinct("model").Pluck("model", &models).Error; err != nil {
-		return 0, false, err
-	}
-	var total int64
-	for _, modelName := range models {
-		scope := RecordedConsentScope(modelName)
-		providers, err := consentSetJSON(scope.Providers)
-		if err != nil {
-			return total, false, err
-		}
-		countries, err := consentSetJSON(scope.Countries)
-		if err != nil {
-			return total, false, err
-		}
-		res := DB.Model(&FreeConsent{}).Where("revoked_at = 0 AND model = ?", modelName).
-			Updates(map[string]any{"providers": providers, "countries": countries})
-		if res.Error != nil {
-			return total, false, res.Error
-		}
-		total += res.RowsAffected
-	}
-	marker := Option{Key: freeConsentProviderRefreshKey, Value: strconv.FormatInt(common.GetTimestamp(), 10)}
-	return total, true, DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker).Error
-}
-
 // RevokeFreeConsent ends the consent for one model; the record stays as proof.
 func RevokeFreeConsent(userId int, guestId string, modelName string) error {
 	where, arg := freeConsentScope(userId, guestId)
@@ -316,4 +240,18 @@ func PruneFreeConsents(now time.Time) (int64, error) {
 		cutoff.Unix(), cutoff.Add(-guestIdLifetime).Unix(), cutoff, cutoff.Unix(),
 	).Delete(&FreeConsent{})
 	return res.RowsAffected, res.Error
+}
+
+// MigrateConsentEnforcementOption copies the switch from its earlier key once;
+// the old row stays and is no longer read.
+func MigrateConsentEnforcementOption() error {
+	var old Option
+	err := DB.Where(&Option{Key: "FreeConsentEnforcementEnabled"}).First(&old).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&Option{Key: "ConsentEnforcementEnabled", Value: old.Value}).Error
 }

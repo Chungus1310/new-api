@@ -333,10 +333,6 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	requestBody, err = stripClientIdentifiers(c, info, requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("strip client identifiers failed: %w", err)
-	}
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -354,6 +350,9 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	if err := stripClientIdentifiers(info, req, requestBody); err != nil {
+		return nil, fmt.Errorf("strip client identifiers failed: %w", err)
+	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -365,50 +364,55 @@ var clientIdentifierPaths = []string{"user", "safety_identifier", "metadata.user
 
 // stripClientIdentifiers removes the ids a client attaches to a request before it
 // reaches a provider that trains on or retains inputs, pass-through included:
-// such a provider gets the content and nothing that links it to a person. A path
+// such a provider gets the content and nothing that links it to a person. It
+// judges the body as sent upstream, after the adaptor set its headers. A path
 // the channel's param override writes is kept, since an admin set it on purpose.
-func stripClientIdentifiers(c *gin.Context, info *common.RelayInfo, body io.Reader) (io.Reader, error) {
-	if body == nil || !common2.OwnPurposeEnabled || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() || upstreamRequiresUser(info) {
-		return body, nil
+func stripClientIdentifiers(info *common.RelayInfo, req *http.Request, body io.Reader) error {
+	if body == nil || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() || upstreamRequiresUser(info) {
+		return nil
 	}
-	if contentType := c.Request.Header.Get("Content-Type"); contentType != "" && !strings.Contains(strings.ToLower(contentType), "json") {
-		return body, nil
+	if contentType := req.Header.Get("Content-Type"); contentType != "" && !strings.Contains(strings.ToLower(contentType), "json") {
+		return nil
 	}
 	var raw []byte
 	var err error
-	if replayable, ok := body.(common2.ReplayableBody); ok {
+	replayable, isReplayable := body.(common2.ReplayableBody)
+	if isReplayable {
 		reader, openErr := replayable.NewReader()
 		if openErr != nil {
-			return nil, openErr
+			return openErr
 		}
 		raw, err = io.ReadAll(reader)
 		reader.Close()
 	} else {
 		raw, err = io.ReadAll(body)
-		body = bytes.NewReader(raw)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if !gjson.ValidBytes(raw) {
-		return body, nil
-	}
-	stripped := raw
+	out := raw
 	changed := false
-	for i, value := range gjson.GetManyBytes(raw, clientIdentifierPaths...) {
-		path := clientIdentifierPaths[i]
-		if !value.Exists() || common.ParamOverrideWritesPath(info, path) {
-			continue
+	if gjson.ValidBytes(raw) {
+		for i, value := range gjson.GetManyBytes(raw, clientIdentifierPaths...) {
+			path := clientIdentifierPaths[i]
+			if !value.Exists() || common.ParamOverrideWritesPath(info, path) {
+				continue
+			}
+			if out, err = sjson.DeleteBytes(out, path); err != nil {
+				return err
+			}
+			changed = true
 		}
-		if stripped, err = sjson.DeleteBytes(stripped, path); err != nil {
-			return nil, err
-		}
-		changed = true
 	}
-	if !changed {
-		return body, nil
+	if isReplayable && !changed {
+		return nil
 	}
-	return bytes.NewReader(stripped), nil
+	req.Body = io.NopCloser(bytes.NewReader(out))
+	req.ContentLength = int64(len(out))
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(out)), nil
+	}
+	return nil
 }
 
 // upstreamRequiresUser lists upstreams that reject a request without a top-level

@@ -30,9 +30,9 @@ type StatusData struct {
 	WeChatLogin              bool   `json:"wechat_login"`
 	ServerAddress            string `json:"server_address"`
 	TurnstileCheck           bool   `json:"turnstile_check"`
-	// Free models need a recorded consent; the chat BFF applies the same switch to guests.
+	// A missing consent blocks the request; the chat BFF applies the same switch to guests.
+	ConsentEnforced            bool        `json:"consent_enforced"`
 	FreeConsentEnforced        bool        `json:"free_consent_enforced"`
-	OwnPurposeEnabled          bool        `json:"own_purpose_enabled"`
 	TurnstileSiteKey           string      `json:"turnstile_site_key"`
 	TopUpLink                  string      `json:"top_up_link"`
 	DocsLink                   string      `json:"docs_link"`

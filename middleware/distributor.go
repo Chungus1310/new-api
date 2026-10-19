@@ -17,7 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/notify"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -53,13 +52,6 @@ func Distribute() func(c *gin.Context) {
 			RequestPath: c.Request.URL.Path,
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
-		// Before any pin or affinity, and independent of the consent switch: an
-		// objection is honoured on every attempt of the request.
-		objects := false
-		if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.OwnPurposeObjection && common.OwnPurposeEnabled {
-			objects = true
-			constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
-		}
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, invalidRequestStatus(err), i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
@@ -75,14 +67,9 @@ func Distribute() func(c *gin.Context) {
 		if !tokenModelAllowed(c, modelRequest.Model) {
 			return
 		}
-		if !freeModelAllowed(c, modelRequest.Model) {
+		if message, code := ConsentRefusal(c, modelRequest.Model); message != "" {
+			abortWithOpenAiMessage(c, http.StatusForbidden, message, code)
 			return
-		}
-		if objects && modelRequest.Model != "" {
-			if scope := model.ConsentScopeFor(modelRequest.Model); scope.TrainsOrRetains && !scope.ServableWithoutOwnPurpose {
-				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorOwnPurposeObjected, map[string]any{"Model": modelRequest.Model}), types.ErrorCode("own_purpose_objected"))
-				return
-			}
 		}
 
 		if pin, found, overridden := constraints.ResolvedPin(); found {
@@ -977,36 +964,31 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 	return true
 }
 
-// freeModelAllowed enforces the documented consent a model needs when a provider
-// uses inputs for its own purposes from an unsafe third country, or when a :free
-// model has providers of unknown practice. A consent covers the provider set it
-// was given for, so a provider added later asks again. The guest key's owner is
-// delegated: the chat BFF checks each guest's own consent before relaying.
-func freeModelAllowed(c *gin.Context, requestedModel string) bool {
-	if !common.FreeConsentEnforcementEnabled {
-		return true
+// ConsentRefusal is the 403 message and code for a request the consent rules
+// refuse, empty when it may pass. An objection is honoured on every attempt of
+// the request, before any pin or affinity and whatever the switch says. A
+// consent covers the provider set it was given for, so a provider added later
+// asks again; only ConsentEnforcementEnabled turns a missing one into a refusal.
+// The guest key's owner is delegated: the chat BFF checks each guest's own
+// consent before relaying.
+func ConsentRefusal(c *gin.Context, requestedModel string) (string, types.ErrorCode) {
+	userSetting, _ := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting)
+	if userSetting.OwnPurposeObjection {
+		service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
+	} else if !common.ConsentEnforcementEnabled {
+		return "", ""
 	}
-	var scope model.ConsentScope
-	if common.OwnPurposeEnabled {
-		scope = model.ConsentScopeFor(requestedModel)
-	} else {
-		// Folded too: the distributor routes "glm-5.3-flash:fre_e" to the :free model.
-		isFree := notify.IsFreeModel(requestedModel) || strings.HasSuffix(common.ModelNameFoldKey(requestedModel), ":free")
-		scope = model.ConsentScope{Model: requestedModel, Required: isFree}
+	scope := model.ConsentScopeFor(requestedModel)
+	if common.ConsentEnforcementEnabled && scope.Required && !userSetting.FreeConsentDelegated {
+		switch model.ConsentAccessFor(c.GetInt("id"), "", scope.Model, scope.Providers) {
+		case model.ConsentAccessBusiness:
+			return i18n.T(c, i18n.MsgDistributorConsentBusiness), types.ErrorCode("free_models_business")
+		case model.ConsentAccessNeedsConsent:
+			return i18n.T(c, i18n.MsgDistributorConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required")
+		}
 	}
-	if !scope.Required {
-		return true
+	if userSetting.OwnPurposeObjection && requestedModel != "" && scope.TrainsOrRetains && !scope.ServableWithoutOwnPurpose {
+		return i18n.T(c, i18n.MsgDistributorOwnPurposeObjected, map[string]any{"Model": requestedModel}), types.ErrorCode("own_purpose_objected")
 	}
-	if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.FreeConsentDelegated {
-		return true
-	}
-	switch model.FreeAccessFor(c.GetInt("id"), "", scope.Model, scope.Providers) {
-	case model.FreeAccessBusiness:
-		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeBusiness), types.ErrorCode("free_models_business"))
-		return false
-	case model.FreeAccessNeedsConsent:
-		abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorFreeConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required"))
-		return false
-	}
-	return true
+	return "", ""
 }
