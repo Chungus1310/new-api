@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"cmp"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -35,6 +37,19 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 			models = []string{}
 		}
 		entry := dto.ProviderConsentItem{Alias: p.Alias, Country: p.Country, Unsafe: p.Unsafe, TrainsOrRetains: p.TrainsOrRetains, ModelCount: len(models), Models: models, Status: status}
+		entry.Tags = p.Tags
+		if entry.Tags == nil {
+			entry.Tags = []string{}
+		}
+		entry.LaneCount, entry.ActiveLaneCount, entry.Active = p.LaneCount, p.ActiveLaneCount, p.Active
+		entry.ModelDetails = make([]dto.ProviderConsentModelItem, 0, len(models))
+		for _, name := range models {
+			active := p.ActiveModels[name]
+			if active {
+				entry.ActiveModelCount++
+			}
+			entry.ModelDetails = append(entry.ModelDetails, dto.ProviderConsentModelItem{Name: name, Active: active})
+		}
 		if at, ok := givenAt[p.Alias]; ok {
 			entry.Status = "given"
 			entry.GivenAt = at
@@ -48,6 +63,7 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 		for _, p := range catalog {
 			items = append(items, item(p, "missing"))
 		}
+		sortProviderConsentItems(items)
 		return dto.Ok(dto.ProviderConsentListData{Providers: items})
 	}
 
@@ -82,7 +98,28 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 			items = append(items, entry)
 		}
 	}
+	sortProviderConsentItems(items)
 	return dto.Ok(dto.ProviderConsentListData{Model: scope.Model, Covered: &covered, Providers: items})
+}
+
+// sortProviderConsentItems puts active providers first, then those serving the
+// most models and lanes.
+func sortProviderConsentItems(items []dto.ProviderConsentItem) {
+	slices.SortStableFunc(items, func(a, b dto.ProviderConsentItem) int {
+		if a.Active != b.Active {
+			if a.Active {
+				return -1
+			}
+			return 1
+		}
+		if c := cmp.Compare(b.ActiveModelCount, a.ActiveModelCount); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(b.ActiveLaneCount, a.ActiveLaneCount); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Alias, b.Alias)
+	})
 }
 
 func grantProviderConsents(c fuego.ContextWithBody[dto.ProviderConsentGrantRequest], guest bool) (*dto.Response[dto.ProviderConsentGrantData], error) {

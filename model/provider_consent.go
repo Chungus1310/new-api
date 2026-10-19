@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -163,6 +165,13 @@ type ConsentProvider struct {
 	Unsafe          bool
 	TrainsOrRetains bool
 	Models          []string
+	// Lane tags of the provider's channels, as they appear in group names.
+	Tags            []string
+	LaneCount       int
+	ActiveLaneCount int
+	// Models with an enabled channel of this provider.
+	ActiveModels map[string]bool
+	Active       bool
 }
 
 type consentProviderCatalog struct {
@@ -220,6 +229,7 @@ func ConsentProviders() []ConsentProvider {
 		}
 	}
 	fillConsentProviderFacts(state, byProvider)
+	fillConsentProviderLanes(byProvider)
 	countries := make(map[string]string, len(byProvider))
 	for p, entry := range byProvider {
 		countries[p] = entry.Country
@@ -265,6 +275,72 @@ func fillConsentProviderFacts(state *groupDataPolicySnapshot, byProvider map[str
 				}
 			}
 		}
+	}
+}
+
+// fillConsentProviderLanes counts each provider's lanes (channel tags) and
+// marks lanes and models that have an enabled channel.
+func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
+	var channels []*Channel
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		for _, channel := range channelsIDM {
+			channels = append(channels, channel)
+		}
+		channelSyncLock.RUnlock()
+	} else if err := DB.Select("id", "tag", "status", "models", "setting").Find(&channels).Error; err != nil {
+		common.SysError("failed to load channels for consent providers: " + err.Error())
+		return
+	}
+	lanes := map[string]map[string]bool{}
+	for _, channel := range channels {
+		var setting kitdto.ChannelSettings
+		if channel.Setting != nil && *channel.Setting != "" {
+			_ = common.UnmarshalJsonStr(*channel.Setting, &setting)
+		}
+		provider := ""
+		if setting.DataPolicy != nil {
+			provider = setting.DataPolicy.Provider
+		}
+		if provider == "" {
+			provider = "channel:" + strconv.Itoa(channel.Id)
+		}
+		entry := byProvider[provider]
+		if entry == nil {
+			continue
+		}
+		enabled := channel.Status == common.ChannelStatusEnabled
+		lane := "#" + strconv.Itoa(channel.Id)
+		if channel.Tag != nil && strings.TrimSpace(*channel.Tag) != "" {
+			lane = strings.TrimSpace(*channel.Tag)
+		}
+		if lanes[provider] == nil {
+			lanes[provider] = map[string]bool{}
+		}
+		lanes[provider][lane] = lanes[provider][lane] || enabled
+		if !enabled {
+			continue
+		}
+		entry.Active = true
+		if entry.ActiveModels == nil {
+			entry.ActiveModels = map[string]bool{}
+		}
+		for _, m := range channel.GetModels() {
+			entry.ActiveModels[strings.TrimSpace(m)] = true
+		}
+	}
+	for provider, entry := range byProvider {
+		entry.Tags = []string{}
+		for lane, active := range lanes[provider] {
+			entry.LaneCount++
+			if active {
+				entry.ActiveLaneCount++
+			}
+			if !strings.HasPrefix(lane, "#") {
+				entry.Tags = append(entry.Tags, lane)
+			}
+		}
+		slices.Sort(entry.Tags)
 	}
 }
 
