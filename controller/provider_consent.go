@@ -200,7 +200,7 @@ func grantProviderConsents(c fuego.ContextWithBody[dto.ProviderConsentGrantReque
 		if label == "" {
 			label = alias.Alias
 		}
-		if !strings.Contains(req.Text, alias.Alias) && !strings.Contains(req.Text, label) {
+		if !textNames(req.Text, alias.Alias) && !textNames(req.Text, label) {
 			unnamed = append(unnamed, label)
 		}
 	}
@@ -252,4 +252,28 @@ func GrantGuestProviderConsents(c fuego.ContextWithBody[dto.ProviderConsentGrant
 
 func RevokeGuestProviderConsent(c fuego.ContextWithBody[dto.ProviderConsentRevokeRequest]) (*dto.Response[dto.MessageResponse], error) {
 	return revokeProviderConsent(c, true)
+}
+
+// textNames reports whether name occurs in text as a whole token: not glued to
+// an ASCII letter or digit on either side, so "pol" is not found in "policy".
+// Labels and aliases are ASCII, while the text around them may be in any script.
+func textNames(text, name string) bool {
+	if name == "" {
+		return false
+	}
+	isASCIIAlnum := func(b byte) bool {
+		return b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+	}
+	for from := 0; ; {
+		i := strings.Index(text[from:], name)
+		if i < 0 {
+			return false
+		}
+		start := from + i
+		end := start + len(name)
+		if (start == 0 || !isASCIIAlnum(text[start-1])) && (end == len(text) || !isASCIIAlnum(text[end])) {
+			return true
+		}
+		from = start + 1
+	}
 }
