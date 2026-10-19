@@ -216,6 +216,10 @@ var FreeRetryTimes = 3
 // recorded consent for it, and to business customers outright.
 var FreeConsentEnforcementEnabled = false
 
+// OwnPurposeEnabled switches on consent per provider set, the objection to
+// providers that train on or retain inputs, and identifier stripping for them.
+var OwnPurposeEnabled = false
+
 // MaxTotalRelayAttempts caps how many channels one request may be tried against
 // in total. RetryTimes is per-group once cross-group auto-retry resets the
 // counter on each group switch, so without this the ceiling scales with the

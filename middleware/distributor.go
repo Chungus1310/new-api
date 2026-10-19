@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/notify"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -55,7 +56,7 @@ func Distribute() func(c *gin.Context) {
 		// Before any pin or affinity, and independent of the consent switch: an
 		// objection is honoured on every attempt of the request.
 		objects := false
-		if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.OwnPurposeObjection {
+		if userSetting, ok := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting); ok && userSetting.OwnPurposeObjection && common.OwnPurposeEnabled {
 			objects = true
 			constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
 		}
@@ -985,7 +986,14 @@ func freeModelAllowed(c *gin.Context, requestedModel string) bool {
 	if !common.FreeConsentEnforcementEnabled {
 		return true
 	}
-	scope := model.ConsentScopeFor(requestedModel)
+	var scope model.ConsentScope
+	if common.OwnPurposeEnabled {
+		scope = model.ConsentScopeFor(requestedModel)
+	} else {
+		// Folded too: the distributor routes "glm-5.3-flash:fre_e" to the :free model.
+		isFree := notify.IsFreeModel(requestedModel) || strings.HasSuffix(common.ModelNameFoldKey(requestedModel), ":free")
+		scope = model.ConsentScope{Model: requestedModel, Required: isFree}
+	}
 	if !scope.Required {
 		return true
 	}

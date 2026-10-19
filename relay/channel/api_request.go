@@ -368,7 +368,7 @@ var clientIdentifierPaths = []string{"user", "safety_identifier", "metadata.user
 // such a provider gets the content and nothing that links it to a person. A path
 // the channel's param override writes is kept, since an admin set it on purpose.
 func stripClientIdentifiers(c *gin.Context, info *common.RelayInfo, body io.Reader) (io.Reader, error) {
-	if body == nil || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() || upstreamRequiresUser(info) {
+	if body == nil || !common2.OwnPurposeEnabled || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() || upstreamRequiresUser(info) {
 		return body, nil
 	}
 	if contentType := c.Request.Header.Get("Content-Type"); contentType != "" && !strings.Contains(strings.ToLower(contentType), "json") {

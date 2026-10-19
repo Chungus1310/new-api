@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -40,7 +41,7 @@ func listFreeConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.FreeConsent
 	}
 	items := make([]dto.FreeConsentItem, 0, len(consents))
 	for _, consent := range consents {
-		items = append(items, dto.FreeConsentItem{Model: consent.Model, Locale: consent.Locale, CreatedAt: consent.CreatedAt, Covers: consent.Covers()})
+		items = append(items, dto.FreeConsentItem{Model: consent.Model, Locale: consent.Locale, CreatedAt: consent.CreatedAt, Covers: !common.OwnPurposeEnabled || consent.Covers()})
 	}
 	return dto.Ok(dto.FreeConsentListData{Consents: items})
 }
@@ -57,7 +58,13 @@ func grantFreeConsent(c fuego.ContextWithBody[dto.FreeConsentGrantRequest], gues
 	if strings.TrimSpace(req.Text) == "" {
 		return dto.Fail[dto.MessageResponse]("consent needs the text shown")
 	}
+	if !common.OwnPurposeEnabled && !notify.IsFreeModel(req.Model) {
+		return dto.Fail[dto.MessageResponse]("consent needs a free model and the text shown")
+	}
 	scope := model.RecordedConsentScope(req.Model)
+	if !common.OwnPurposeEnabled {
+		scope.Model = req.Model
+	}
 	// Every :free model still takes a consent: the chat gates on is_free until
 	// the frontend reads consent_required.
 	if !scope.Required && !notify.IsFreeModel(scope.Model) {
@@ -118,13 +125,13 @@ func getOwnPurposeObjection(c dto.FuegoCtx, guest bool) (*dto.Response[dto.OwnPu
 		if err != nil {
 			return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
 		}
-		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects && common.OwnPurposeEnabled})
 	}
 	user, err := model.GetUserById(userId, true)
 	if err != nil {
 		return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
 	}
-	return dto.Ok(dto.OwnPurposeObjectionData{Objection: user.GetSetting().OwnPurposeObjection})
+	return dto.Ok(dto.OwnPurposeObjectionData{Objection: user.GetSetting().OwnPurposeObjection && common.OwnPurposeEnabled})
 }
 
 func setOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionRequest], guest bool) (*dto.Response[dto.OwnPurposeObjectionData], error) {
@@ -141,7 +148,7 @@ func setOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionReque
 		if err := model.SetGuestOwnPurposeObjection(guestId, objects); err != nil {
 			return dto.Fail[dto.OwnPurposeObjectionData](err.Error())
 		}
-		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+		return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects && common.OwnPurposeEnabled})
 	}
 	user, err := model.GetUserById(userId, true)
 	if err != nil {
@@ -152,7 +159,7 @@ func setOwnPurposeObjection(c fuego.ContextWithBody[dto.OwnPurposeObjectionReque
 	if err := model.UpdateUserSetting(user.Id, setting); err != nil {
 		return dto.Fail[dto.OwnPurposeObjectionData]("Update failed")
 	}
-	return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects})
+	return dto.Ok(dto.OwnPurposeObjectionData{Objection: objects && common.OwnPurposeEnabled})
 }
 
 func GetOwnPurposeObjection(c fuego.ContextNoBody) (*dto.Response[dto.OwnPurposeObjectionData], error) {

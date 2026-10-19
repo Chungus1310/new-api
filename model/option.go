@@ -215,6 +215,7 @@ func InitOptionMap() {
 	common.OptionMap["RetryTimes"] = strconv.Itoa(common.RetryTimes)
 	common.OptionMap["FreeRetryTimes"] = strconv.Itoa(common.FreeRetryTimes)
 	common.OptionMap["FreeConsentEnforcementEnabled"] = strconv.FormatBool(common.FreeConsentEnforcementEnabled)
+	common.OptionMap["OwnPurposeEnabled"] = strconv.FormatBool(common.OwnPurposeEnabled)
 	common.OptionMap["MaxTotalRelayAttempts"] = strconv.Itoa(common.MaxTotalRelayAttempts)
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
@@ -466,6 +467,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.PasswordRegisterEnabled = boolValue
 		case "FreeConsentEnforcementEnabled":
 			common.FreeConsentEnforcementEnabled = boolValue
+		case "OwnPurposeEnabled":
+			common.OwnPurposeEnabled = boolValue
 		case "PasswordLoginEnabled":
 			common.PasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
