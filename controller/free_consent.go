@@ -40,7 +40,7 @@ func listFreeConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.FreeConsent
 	}
 	items := make([]dto.FreeConsentItem, 0, len(consents))
 	for _, consent := range consents {
-		items = append(items, dto.FreeConsentItem{Model: consent.Model, Locale: consent.Locale, CreatedAt: consent.CreatedAt})
+		items = append(items, dto.FreeConsentItem{Model: consent.Model, Locale: consent.Locale, CreatedAt: consent.CreatedAt, Covers: consent.Covers()})
 	}
 	return dto.Ok(dto.FreeConsentListData{Consents: items})
 }

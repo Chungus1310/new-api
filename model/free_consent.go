@@ -143,17 +143,33 @@ func buildFreeConsentEntry(userId int, guestId string) (freeConsentEntry, error)
 			covered = map[string]bool{}
 			entry.models[consent.Model] = covered
 		}
-		var providers []string
-		if consent.Providers != "" {
-			if err := common.UnmarshalJsonStr(consent.Providers, &providers); err != nil {
-				common.SysError("failed to parse providers of free consent " + strconv.Itoa(consent.Id) + ": " + err.Error())
-			}
-		}
-		for _, p := range providers {
+		for _, p := range consent.providerSet() {
 			covered[p] = true
 		}
 	}
 	return entry, nil
+}
+
+func (consent FreeConsent) providerSet() []string {
+	var providers []string
+	if consent.Providers == "" {
+		return providers
+	}
+	if err := common.UnmarshalJsonStr(consent.Providers, &providers); err != nil {
+		common.SysError("failed to parse providers of free consent " + strconv.Itoa(consent.Id) + ": " + err.Error())
+	}
+	return providers
+}
+
+// Covers reports whether the consent covered every provider now serving its model.
+func (consent FreeConsent) Covers() bool {
+	stored := consent.providerSet()
+	for _, p := range ConsentScopeFor(consent.Model).Providers {
+		if !slices.Contains(stored, p) {
+			return false
+		}
+	}
+	return true
 }
 
 // GrantFreeConsent records a new consent; an earlier one for the same model is

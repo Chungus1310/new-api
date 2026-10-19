@@ -5,6 +5,8 @@ type FreeConsentItem struct {
 	Model     string `json:"model"`
 	Locale    string `json:"locale"`
 	CreatedAt int64  `json:"created_at"`
+	// False once a provider the consent did not cover serves the model.
+	Covers bool `json:"covers"`
 }
 
 // FreeConsentListData is the response data for GET /api/user/self/free-consents.
