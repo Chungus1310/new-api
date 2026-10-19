@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // FreeConsent documents a consent to one model under Art. 4 No. 11 GDPR.
@@ -244,6 +245,47 @@ func BackfillFreeConsentProviders() (int64, error) {
 		total += res.RowsAffected
 	}
 	return total, nil
+}
+
+// The first backfill ran before channels carried a provider tag, so its sets
+// hold channel:<id> placeholders. This marker lets the refresh to tagged sets
+// run exactly once.
+const freeConsentProviderRefreshKey = "FreeConsentProviderRefresh20261019"
+
+// RefreshFreeConsentProvidersOnce replaces the provider and country sets of
+// every active consent with the current recorded scope, once per database.
+func RefreshFreeConsentProvidersOnce() (int64, bool, error) {
+	var done int64
+	if err := DB.Model(&Option{}).Where(&Option{Key: freeConsentProviderRefreshKey}).Count(&done).Error; err != nil {
+		return 0, false, err
+	}
+	if done > 0 || len(groupDataPolicyState().recipients) == 0 {
+		return 0, false, nil
+	}
+	var models []string
+	if err := DB.Model(&FreeConsent{}).Where("revoked_at = 0").Distinct("model").Pluck("model", &models).Error; err != nil {
+		return 0, false, err
+	}
+	var total int64
+	for _, modelName := range models {
+		scope := RecordedConsentScope(modelName)
+		providers, err := consentSetJSON(scope.Providers)
+		if err != nil {
+			return total, false, err
+		}
+		countries, err := consentSetJSON(scope.Countries)
+		if err != nil {
+			return total, false, err
+		}
+		res := DB.Model(&FreeConsent{}).Where("revoked_at = 0 AND model = ?", modelName).
+			Updates(map[string]any{"providers": providers, "countries": countries})
+		if res.Error != nil {
+			return total, false, res.Error
+		}
+		total += res.RowsAffected
+	}
+	marker := Option{Key: freeConsentProviderRefreshKey, Value: strconv.FormatInt(common.GetTimestamp(), 10)}
+	return total, true, DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker).Error
 }
 
 // RevokeFreeConsent ends the consent for one model; the record stays as proof.
