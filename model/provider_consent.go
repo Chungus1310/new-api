@@ -201,7 +201,7 @@ func ConsentProviders() []ConsentProvider {
 		return cached.providers
 	}
 	state := groupDataPolicyState()
-	pricing := GetPricing()
+	pricing := GetPricingWithOffline()
 	names := make([]string, 0, len(pricing))
 	for _, p := range pricing {
 		names = append(names, p.ModelName)
