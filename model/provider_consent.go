@@ -159,10 +159,13 @@ func AssignProviderAliases(providers map[string]string) error {
 // ConsentProvider is one provider that some model needs a consent for.
 // Provider is internal and must never reach an API response.
 type ConsentProvider struct {
-	Provider        string
-	Alias           string
-	Country         string
-	Unsafe          bool
+	Provider string
+	Alias    string
+	Country  string
+	Unsafe   bool
+	// Unsafe only because inputs pass on to unvetted recipients (transfer
+	// none) while the seat itself is in the EEA or an adequacy country.
+	OnwardUnvetted  bool
 	TrainsOrRetains bool
 	Models          []string
 	// Lane tags of the provider's channels, as they appear in group names.
@@ -277,6 +280,7 @@ func fillConsentProviderFacts(state *groupDataPolicySnapshot, byProvider map[str
 			if entry := byProvider[r.provider]; entry != nil {
 				entry.TrainsOrRetains = true
 				entry.Unsafe = entry.Unsafe || r.unsafe
+				entry.OnwardUnvetted = entry.OnwardUnvetted || (r.unsafe && (kitdto.IsEEACountry(r.country) || kitdto.IsEUAdequacyCountry(r.country)))
 				if entry.Country == "" {
 					entry.Country = r.country
 				}
@@ -285,6 +289,7 @@ func fillConsentProviderFacts(state *groupDataPolicySnapshot, byProvider map[str
 		for _, r := range recipients.unknown {
 			if entry := byProvider[r.provider]; entry != nil {
 				entry.Unsafe = entry.Unsafe || r.unsafe
+				entry.OnwardUnvetted = entry.OnwardUnvetted || (r.unsafe && (kitdto.IsEEACountry(r.country) || kitdto.IsEUAdequacyCountry(r.country)))
 				if entry.Country == "" {
 					entry.Country = r.country
 				}

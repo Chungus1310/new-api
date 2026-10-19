@@ -116,6 +116,7 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 			current = *policy
 		}
 		recipient := dataRecipient{provider: current.Provider, country: current.SeatCountry, unsafe: current.UnsafeThirdCountry()}
+		onwardUnvetted := recipient.unsafe && (kitdto.IsEEACountry(current.SeatCountry) || kitdto.IsEUAdequacyCountry(current.SeatCountry))
 		// Without a tag the channel still has to count, or adding it would not
 		// change the provider set a consent covers.
 		if recipient.provider == "" {
@@ -149,6 +150,7 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 					Prompts:            orUnknown(current.Prompts),
 					Transfer:           orUnknown(current.Transfer),
 					UnsafeThirdCountry: current.UnsafeThirdCountry(),
+					OnwardUnvetted:     onwardUnvetted,
 				}
 				continue
 			}
@@ -163,6 +165,7 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 				existing.Transfer = orUnknown(current.Transfer)
 			}
 			existing.UnsafeThirdCountry = existing.UnsafeThirdCountry || current.UnsafeThirdCountry()
+			existing.OnwardUnvetted = existing.OnwardUnvetted || onwardUnvetted
 			merged[group] = existing
 		}
 	}

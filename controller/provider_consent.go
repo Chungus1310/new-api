@@ -40,7 +40,7 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 		if label == "" {
 			label = model.ProviderLabel(p.Tags, p.Alias)
 		}
-		entry := dto.ProviderConsentItem{Alias: p.Alias, Label: label, Country: p.Country, Unsafe: p.Unsafe, TrainsOrRetains: p.TrainsOrRetains, ModelCount: len(models), Models: models, Status: status}
+		entry := dto.ProviderConsentItem{Alias: p.Alias, Label: label, Country: p.Country, Unsafe: p.Unsafe, OnwardUnvetted: p.OnwardUnvetted, TrainsOrRetains: p.TrainsOrRetains, ModelCount: len(models), Models: models, Status: status}
 		entry.Tags = p.Tags
 		if entry.Tags == nil {
 			entry.Tags = []string{}

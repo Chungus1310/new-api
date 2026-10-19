@@ -29,4 +29,7 @@ type GroupDataPolicy struct {
 	// True when any channel sends data to a third country without an adequacy
 	// decision and without a transfer basis.
 	UnsafeThirdCountry bool `json:"unsafe_third_country"`
+	// True when a channel is unsafe only because inputs pass on to unvetted
+	// recipients while its seat is in the EEA or an adequacy country.
+	OnwardUnvetted bool `json:"onward_unvetted"`
 }

@@ -41,9 +41,11 @@ type OwnPurposeObjectionRequest struct {
 type ProviderConsentItem struct {
 	Alias string `json:"alias"`
 	// Visible name from the lane tags; alias stays the key.
-	Label           string   `json:"label"`
-	Country         string   `json:"country"`
-	Unsafe          bool     `json:"unsafe"`
+	Label   string `json:"label"`
+	Country string `json:"country"`
+	Unsafe  bool   `json:"unsafe"`
+	// Unsafe only because inputs pass on to unvetted recipients; the seat country is safe.
+	OnwardUnvetted  bool     `json:"onward_unvetted"`
 	TrainsOrRetains bool     `json:"trains_or_retains"`
 	ModelCount      int      `json:"model_count"`
 	Models          []string `json:"models"`
