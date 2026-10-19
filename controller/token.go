@@ -94,6 +94,14 @@ func sanitizeTokenGroupMapping(userId int, mappingJSON string) (string, error) {
 }
 
 // TokenResponse is a token with its resolved auto-group order.
+// tokenReasoningEfforts are the choices the key settings selector offers; "" is off.
+var tokenReasoningEfforts = map[string]bool{"": true, "low": true, "medium": true, "high": true, "max": true}
+
+func normalizeTokenReasoningEffort(value string) (string, bool) {
+	effort := strings.ToLower(strings.TrimSpace(value))
+	return effort, tokenReasoningEfforts[effort]
+}
+
 type TokenResponse struct {
 	*model.Token
 	AutoGroups []string `json:"auto_groups"`
@@ -376,6 +384,13 @@ func AddToken(c fuego.ContextWithBody[dto.CreateTokenRequest]) (dto.MessageRespo
 		}
 	}
 	cleanToken.AllowUserQuotaQuery = token.AllowUserQuotaQuery == nil || *token.AllowUserQuotaQuery
+	if token.DefaultReasoningEffort != nil {
+		effort, ok := normalizeTokenReasoningEffort(*token.DefaultReasoningEffort)
+		if !ok {
+			return dto.FailMsg("Invalid default reasoning effort")
+		}
+		cleanToken.DefaultReasoningEffort = effort
+	}
 	err = cleanToken.Insert()
 	if err != nil {
 		return dto.FailMsg(err.Error())
@@ -469,6 +484,13 @@ func UpdateToken(c fuego.Context[dto.UpdateTokenRequest, dto.StatusOnlyParams]) 
 		cleanToken.AllowIps = token.AllowIps
 		if token.AllowUserQuotaQuery != nil {
 			cleanToken.AllowUserQuotaQuery = *token.AllowUserQuotaQuery
+		}
+		if token.DefaultReasoningEffort != nil {
+			effort, ok := normalizeTokenReasoningEffort(*token.DefaultReasoningEffort)
+			if !ok {
+				return dto.Fail[TokenResponse]("Invalid default reasoning effort")
+			}
+			cleanToken.DefaultReasoningEffort = effort
 		}
 		cleanToken.Group = token.Group
 		if token.CrossGroupRetry != nil {

@@ -88,3 +88,8 @@ router/api-router.go :: logGroup.Group("", middleware.ModAuth(), middleware.NoPA
 # a reseller must not show which provider answered: every host and domain in a client error is masked
 relaykit/relayconvert/kitutil/mask.go :: if !MaskEveryHost &&
 common/str.go :: kitutil.MaskEveryHost = true
+# a key's default reasoning level fills requests that send none (key settings selector)
+model/token.go :: DefaultReasoningEffort string `json:"default_reasoning_effort"
+relay/helper/token_reasoning.go :: func ApplyTokenReasoningDefault
+controller/relay.go :: helper.ApplyTokenReasoningDefault(c, request)
+middleware/auth.go :: constant.ContextKeyTokenReasoningEffort

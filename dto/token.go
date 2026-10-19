@@ -38,6 +38,8 @@ type CreateTokenRequest struct {
 	AutoGroups      *[]string `json:"auto_groups"`
 	// nil on create means on; nil on update keeps the stored value.
 	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
+	// low, medium, high or max; "" clears it; nil on update keeps the stored value.
+	DefaultReasoningEffort *string `json:"default_reasoning_effort"`
 }
 
 // UpdateTokenRequest is the request body for PUT /api/token/.
@@ -59,6 +61,8 @@ type UpdateTokenRequest struct {
 	AutoGroups      *[]string `json:"auto_groups"`
 	// nil on create means on; nil on update keeps the stored value.
 	AllowUserQuotaQuery *bool `json:"allow_user_quota_query"`
+	// low, medium, high or max; "" clears it; nil on update keeps the stored value.
+	DefaultReasoningEffort *string `json:"default_reasoning_effort"`
 }
 
 // GuestTokenLimitsRequest is the body for PUT /api/token/guest-model-limits.
