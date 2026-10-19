@@ -67,13 +67,14 @@ type EmailBindParams struct {
 // ─── User ───────────────────────────────────────────────────────────
 
 type SearchUsersParams struct {
-	Keyword       string `query:"keyword"    description:"Search keyword"`
-	Group         string `query:"group"      description:"Filter by group"`
-	Role          *int   `query:"role"       description:"Filter by role"`
-	Status        *int   `query:"status"     description:"Filter by status"`
-	NegativeQuota bool   `query:"negative_quota" description:"Only users whose balance is below zero"`
-	SortBy        string `query:"sort_by"    description:"Field to sort by"`
-	SortOrder     string `query:"sort_order" description:"Sort order: asc or desc"`
+	Keyword         string `query:"keyword"    description:"Search keyword"`
+	Group           string `query:"group"      description:"Filter by group"`
+	Role            *int   `query:"role"       description:"Filter by role"`
+	Status          *int   `query:"status"     description:"Filter by status"`
+	NegativeQuota   bool   `query:"negative_quota" description:"Only users whose balance is below zero"`
+	ConsentEnforced bool   `query:"consent_enforced" description:"Only users with consent enforcement switched on for their account"`
+	SortBy          string `query:"sort_by"    description:"Field to sort by"`
+	SortOrder       string `query:"sort_order" description:"Sort order: asc or desc"`
 }
 
 // ─── Checkin ────────────────────────────────────────────────────────

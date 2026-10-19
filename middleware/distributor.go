@@ -968,18 +968,21 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 // refuse, empty when it may pass. An objection is honoured on every attempt of
 // the request, before any pin or affinity and whatever the switch says. A
 // consent covers the provider set it was given for, so a provider added later
-// asks again; only ConsentEnforcementEnabled turns a missing one into a refusal.
+// asks again. A missing one is refused while ConsentEnforcementEnabled is on,
+// for an account with consent_enforced, or for a model in ConsentEnforcedModels.
 // The guest key's owner is delegated: the chat BFF checks each guest's own
 // consent before relaying.
 func ConsentRefusal(c *gin.Context, requestedModel string) (string, types.ErrorCode) {
 	userSetting, _ := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting)
+	enforced := common.ConsentEnforcementEnabled || userSetting.ConsentEnforced
 	if userSetting.OwnPurposeObjection {
 		service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
-	} else if !common.ConsentEnforcementEnabled {
+	} else if !enforced && len(common.ConsentEnforcedModels()) == 0 {
 		return "", ""
 	}
 	scope := model.ConsentScopeFor(requestedModel)
-	if common.ConsentEnforcementEnabled && scope.Required && !userSetting.FreeConsentDelegated {
+	enforced = enforced || common.ConsentEnforcedModel(scope.Model, requestedModel)
+	if enforced && scope.Required && !userSetting.FreeConsentDelegated {
 		switch model.ConsentAccessFor(c.GetInt("id"), "", scope.Model, scope.Providers) {
 		case model.ConsentAccessBusiness:
 			return i18n.T(c, i18n.MsgDistributorConsentBusiness), types.ErrorCode("free_models_business")

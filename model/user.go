@@ -564,7 +564,7 @@ func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (use
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, negativeQuota bool, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, negativeQuota bool, consentEnforced bool, startIdx int, num int, sortOptions ...UserSortOptions) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -611,6 +611,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, negativeQ
 	}
 	if negativeQuota {
 		query = query.Where("quota < 0")
+	}
+	if consentEnforced {
+		query = query.Where("setting LIKE ?", `%"consent_enforced":true%`)
 	}
 
 	// 获取总数

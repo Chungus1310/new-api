@@ -632,7 +632,7 @@ func SearchUsers(c fuego.ContextWithParams[dto.SearchUsersParams]) (*dto.Respons
 	p, _ := dto.ParseParams[dto.SearchUsersParams](c)
 	pageInfo := dto.PageInfo(c)
 	sortOptions := model.NewUserSortOptions(p.SortBy, p.SortOrder)
-	users, total, err := model.SearchUsers(p.Keyword, p.Group, p.Role, p.Status, p.NegativeQuota, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
+	users, total, err := model.SearchUsers(p.Keyword, p.Group, p.Role, p.Status, p.NegativeQuota, p.ConsentEnforced, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		return dto.FailPage[*model.User](err.Error())
 	}
@@ -668,6 +668,7 @@ var patDeniedManageActions = map[string]bool{
 	"set_unlimited_free":             true,
 	"set_moderation_exempt":          true,
 	"set_free_consent_delegated":     true,
+	"set_consent_enforced":           true,
 	"set_free_rate_limit_window_pct": true,
 	"set_usable_groups":              true,
 }
@@ -1619,6 +1620,17 @@ func ManageUser(c fuego.ContextWithBody[dto.ManageRequest]) (*dto.Response[dto.M
 		adminName := ginCtx.GetString("username")
 		model.RecordLog(user.Id, model.LogTypeManage,
 			common.NewMessage("admin ({{admin}}) set free-consent-delegated to {{value}} for user", map[string]any{"admin": adminName, "value": req.Value == 1}))
+		return dto.Ok(dto.ManageUserData{Role: user.Role, Status: user.Status})
+	case "set_consent_enforced":
+		s := user.GetSetting()
+		s.ConsentEnforced = req.Value == 1
+		user.SetSetting(s)
+		if err := user.Update(false); err != nil {
+			return dto.Fail[dto.ManageUserData](err.Error())
+		}
+		adminName := ginCtx.GetString("username")
+		model.RecordLog(user.Id, model.LogTypeManage,
+			common.NewMessage("admin ({{admin}}) set consent-enforced to {{value}} for user", map[string]any{"admin": adminName, "value": req.Value == 1}))
 		return dto.Ok(dto.ManageUserData{Role: user.Role, Status: user.Status})
 	case "set_moderation_exempt":
 		s := user.GetSetting()

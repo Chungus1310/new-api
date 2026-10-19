@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	//"os"
 	//"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -215,6 +216,34 @@ var FreeRetryTimes = 3
 // ConsentEnforcementEnabled refuses a model that needs a consent to anyone
 // without one covering its providers, and to business customers outright.
 var ConsentEnforcementEnabled = false
+
+// consentEnforcedModels turns the consent refusal on for these models only,
+// so enforcement can go on in waves before the global switch.
+var consentEnforcedModels atomic.Pointer[[]string]
+
+// SetConsentEnforcedModels takes the option value, a JSON array of model names.
+func SetConsentEnforcedModels(value string) error {
+	models := []string{}
+	if strings.TrimSpace(value) != "" {
+		if err := UnmarshalJsonStr(value, &models); err != nil {
+			return err
+		}
+	}
+	consentEnforcedModels.Store(&models)
+	return nil
+}
+
+func ConsentEnforcedModels() []string {
+	if models := consentEnforcedModels.Load(); models != nil {
+		return *models
+	}
+	return []string{}
+}
+
+func ConsentEnforcedModel(names ...string) bool {
+	models := ConsentEnforcedModels()
+	return slices.ContainsFunc(names, func(name string) bool { return slices.Contains(models, name) })
+}
 
 // MaxTotalRelayAttempts caps how many channels one request may be tried against
 // in total. RetryTimes is per-group once cross-group auto-retry resets the
