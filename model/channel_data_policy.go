@@ -359,8 +359,9 @@ func trimConsentScopeCache(generation uint64) {
 	removed := int64(0)
 	consentScopeCache.Range(func(key, value any) bool {
 		if entry, ok := value.(consentScopeEntry); !ok || entry.generation != generation || now.After(entry.expires) {
-			consentScopeCache.Delete(key)
-			removed++
+			if _, loaded := consentScopeCache.LoadAndDelete(key); loaded {
+				removed++
+			}
 		}
 		return true
 	})
@@ -368,8 +369,9 @@ func trimConsentScopeCache(generation uint64) {
 		evict := true
 		consentScopeCache.Range(func(key, _ any) bool {
 			if evict {
-				consentScopeCache.Delete(key)
-				removed++
+				if _, loaded := consentScopeCache.LoadAndDelete(key); loaded {
+					removed++
+				}
 			}
 			evict = !evict
 			return true
