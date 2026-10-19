@@ -987,7 +987,7 @@ func ConsentRefusal(c *gin.Context, requestedModel string) (string, types.ErrorC
 		case model.ConsentAccessBusiness:
 			return i18n.T(c, i18n.MsgDistributorConsentBusiness), types.ErrorCode("free_models_business")
 		case model.ConsentAccessNeedsConsent:
-			return i18n.T(c, i18n.MsgDistributorConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/chat?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required")
+			return i18n.T(c, i18n.MsgDistributorConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/consents?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required")
 		}
 	}
 	if userSetting.OwnPurposeObjection && requestedModel != "" && scope.TrainsOrRetains && !scope.ServableWithoutOwnPurpose {
