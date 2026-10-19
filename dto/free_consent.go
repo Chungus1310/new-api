@@ -39,7 +39,9 @@ type OwnPurposeObjectionRequest struct {
 
 // ProviderConsentItem is one provider that needs a consent, by its public alias.
 type ProviderConsentItem struct {
-	Alias           string   `json:"alias"`
+	Alias string `json:"alias"`
+	// Visible name from the lane tags; alias stays the key.
+	Label           string   `json:"label"`
 	Country         string   `json:"country"`
 	Unsafe          bool     `json:"unsafe"`
 	TrainsOrRetains bool     `json:"trains_or_retains"`

@@ -166,7 +166,9 @@ type ConsentProvider struct {
 	TrainsOrRetains bool
 	Models          []string
 	// Lane tags of the provider's channels, as they appear in group names.
-	Tags               []string
+	Tags []string
+	// Label is the visible name built from Tags, the alias when there are none.
+	Label              string
 	LaneCount          int
 	ActiveLaneCount    int
 	ChannelCount       int
@@ -247,6 +249,7 @@ func ConsentProviders() []ConsentProvider {
 			continue
 		}
 		entry.Alias = alias.Alias
+		entry.Label = ProviderLabel(entry.Tags, entry.Alias)
 		if entry.Country == "" && alias.Country != unknownAliasCountry {
 			entry.Country = alias.Country
 		}
@@ -351,6 +354,62 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 		}
 		slices.Sort(entry.Tags)
 	}
+}
+
+// ProviderLabel names a provider by its lane tags, collapsing numbered tags of
+// one prefix into ranges: cfp1..cfp8 is "cfp 1 to 8", mcd1 with open1..open3 is
+// "mcd1, open 1 to 3".
+func ProviderLabel(tags []string, alias string) string {
+	if len(tags) == 0 {
+		return alias
+	}
+	numbered := map[string][]int{}
+	var plain []string
+	for _, tag := range tags {
+		end := len(tag)
+		for end > 0 && tag[end-1] >= '0' && tag[end-1] <= '9' {
+			end--
+		}
+		n, err := strconv.Atoi(tag[end:])
+		if end == 0 || end == len(tag) || err != nil || strings.HasPrefix(tag[end:], "0") {
+			plain = append(plain, tag)
+			continue
+		}
+		numbered[tag[:end]] = append(numbered[tag[:end]], n)
+	}
+	type part struct{ key, text string }
+	var parts []part
+	for _, tag := range plain {
+		parts = append(parts, part{tag, tag})
+	}
+	for prefix, numbers := range numbered {
+		if len(numbers) == 1 {
+			parts = append(parts, part{prefix, prefix + strconv.Itoa(numbers[0])})
+			continue
+		}
+		slices.Sort(numbers)
+		numbers = slices.Compact(numbers)
+		var ranges []string
+		for i := 0; i < len(numbers); {
+			j := i
+			for j+1 < len(numbers) && numbers[j+1] == numbers[j]+1 {
+				j++
+			}
+			if i == j {
+				ranges = append(ranges, strconv.Itoa(numbers[i]))
+			} else {
+				ranges = append(ranges, strconv.Itoa(numbers[i])+" to "+strconv.Itoa(numbers[j]))
+			}
+			i = j + 1
+		}
+		parts = append(parts, part{prefix, prefix + " " + strings.Join(ranges, ", ")})
+	}
+	slices.SortFunc(parts, func(a, b part) int { return strings.Compare(a.key, b.key) })
+	texts := make([]string, len(parts))
+	for i, p := range parts {
+		texts[i] = p.text
+	}
+	return strings.Join(texts, ", ")
 }
 
 // ProviderAliasesFor maps internal providers to their aliases; a provider

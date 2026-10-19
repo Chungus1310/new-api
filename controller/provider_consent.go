@@ -36,7 +36,11 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 		if models == nil {
 			models = []string{}
 		}
-		entry := dto.ProviderConsentItem{Alias: p.Alias, Country: p.Country, Unsafe: p.Unsafe, TrainsOrRetains: p.TrainsOrRetains, ModelCount: len(models), Models: models, Status: status}
+		label := p.Label
+		if label == "" {
+			label = model.ProviderLabel(p.Tags, p.Alias)
+		}
+		entry := dto.ProviderConsentItem{Alias: p.Alias, Label: label, Country: p.Country, Unsafe: p.Unsafe, TrainsOrRetains: p.TrainsOrRetains, ModelCount: len(models), Models: models, Status: status}
 		entry.Tags = p.Tags
 		if entry.Tags == nil {
 			entry.Tags = []string{}
@@ -184,16 +188,24 @@ func grantProviderConsents(c fuego.ContextWithBody[dto.ProviderConsentGrantReque
 			targets = append(targets, alias)
 		}
 	}
+	labels := map[string]string{}
+	for _, p := range model.ConsentProviders() {
+		labels[p.Alias] = p.Label
+	}
 	granted := make([]string, 0, len(targets))
 	var unnamed []string
 	for _, alias := range targets {
 		granted = append(granted, alias.Alias)
-		if !strings.Contains(req.Text, alias.Alias) {
-			unnamed = append(unnamed, alias.Alias)
+		label := labels[alias.Alias]
+		if label == "" {
+			label = alias.Alias
+		}
+		if !strings.Contains(req.Text, alias.Alias) && !strings.Contains(req.Text, label) {
+			unnamed = append(unnamed, label)
 		}
 	}
 	if len(unnamed) > 0 {
-		return dto.Fail[dto.ProviderConsentGrantData]("the consent text must name every provider granted: " + strings.Join(unnamed, ", "))
+		return dto.Fail[dto.ProviderConsentGrantData]("the consent text must name every provider granted: " + strings.Join(unnamed, "; "))
 	}
 	if len(targets) > 0 {
 		if err := model.GrantProviderConsents(userId, guestId, targets, req.Locale, req.Text); err != nil {
