@@ -32,6 +32,8 @@ type groupRecipients struct {
 	unknown []dataRecipient
 	// True when some channel neither trains on nor retains prompts.
 	withoutOwnPurpose bool
+	// Seat countries of every channel in the group.
+	countries []string
 }
 
 type dataRecipient struct {
@@ -127,6 +129,9 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 				recorded[group] = true
 			}
 			r := recipients[group]
+			if current.SeatCountry != "" && !slices.Contains(r.countries, current.SeatCountry) {
+				r.countries = append(r.countries, current.SeatCountry)
+			}
 			switch {
 			case current.UsesInputsForOwnPurposes():
 				r.ownPurpose = append(r.ownPurpose, recipient)
@@ -198,6 +203,23 @@ func OfflineModelGroups(modelName string) ([]string, map[string]dto.GroupDataPol
 	return groups, GroupPoliciesFor(groups)
 }
 
+// ListedModelGroups maps each of the given models to the groups listing it,
+// enabled or not, in one query per chunk.
+func ListedModelGroups(models []string) map[string][]string {
+	out := make(map[string][]string, len(models))
+	for chunk := range slices.Chunk(models, 1000) {
+		var rows []Ability
+		if err := DB.Model(&Ability{}).Select("model", commonGroupCol).Where("model IN ?", chunk).Distinct().Find(&rows).Error; err != nil {
+			common.SysError("failed to list groups of offline models: " + err.Error())
+			return out
+		}
+		for _, row := range rows {
+			out[row.Model] = append(out[row.Model], row.Group)
+		}
+	}
+	return out
+}
+
 // OwnPurposeGroup is one group of a model whose providers train on or retain
 // prompts. Providers is internal and must never reach an API response.
 type OwnPurposeGroup struct {
@@ -266,6 +288,9 @@ type ConsentScope struct {
 	Required  bool
 	Providers []string
 	Countries []string
+	// Seat countries of every provider of the model, own-purpose or not.
+	SeatCountries []string
+	Free          bool
 	// Some group can serve the model without an own-purpose provider, so an
 	// objection under Art. 21 GDPR still leaves it usable.
 	ServableWithoutOwnPurpose bool
@@ -292,8 +317,13 @@ func consentScope(state *groupDataPolicySnapshot, modelName string, groups []str
 	}
 	// Folded too: the distributor routes "glm-5.3-flash:fre_e" to the :free model.
 	free := notify.IsFreeModel(modelName) || strings.HasSuffix(common.ModelNameFoldKey(modelName), ":free")
+	scope.Free = free
+	seats := map[string]bool{}
 	for _, group := range expandGroups(state, groups) {
 		recipients := state.recipients[group]
+		for _, c := range recipients.countries {
+			seats[c] = true
+		}
 		scope.ServableWithoutOwnPurpose = scope.ServableWithoutOwnPurpose || recipients.withoutOwnPurpose
 		if !free {
 			continue
@@ -305,6 +335,8 @@ func consentScope(state *groupDataPolicySnapshot, modelName string, groups []str
 	}
 	scope.Providers = slices.Sorted(maps.Keys(providers))
 	scope.Countries = slices.Sorted(maps.Keys(countries))
+	maps.Copy(seats, countries)
+	scope.SeatCountries = slices.Sorted(maps.Keys(seats))
 	return scope
 }
 

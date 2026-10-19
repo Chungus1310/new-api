@@ -32,7 +32,6 @@ type StatusData struct {
 	TurnstileCheck           bool   `json:"turnstile_check"`
 	// A missing consent blocks the request; the chat BFF applies the same switch to guests.
 	ConsentEnforced            bool        `json:"consent_enforced"`
-	FreeConsentEnforced        bool        `json:"free_consent_enforced"`
 	TurnstileSiteKey           string      `json:"turnstile_site_key"`
 	TopUpLink                  string      `json:"top_up_link"`
 	DocsLink                   string      `json:"docs_link"`
