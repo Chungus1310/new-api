@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/notify"
 
 	"github.com/go-fuego/fuego"
 )
@@ -57,7 +58,9 @@ func grantFreeConsent(c fuego.ContextWithBody[dto.FreeConsentGrantRequest], gues
 		return dto.Fail[dto.MessageResponse]("consent needs the text shown")
 	}
 	scope := model.RecordedConsentScope(req.Model)
-	if !scope.Required {
+	// Every :free model still takes a consent: the chat gates on is_free until
+	// the frontend reads consent_required.
+	if !scope.Required && !notify.IsFreeModel(scope.Model) {
 		return dto.Fail[dto.MessageResponse]("this model needs no consent")
 	}
 	if err := model.GrantFreeConsent(userId, guestId, scope, req.Locale, req.Text); err != nil {

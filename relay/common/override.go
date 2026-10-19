@@ -574,6 +574,29 @@ func buildParamOverrideAuditLine(mode, path, from, to string, value any) string 
 	}
 }
 
+// ParamOverrideWritesPath reports whether the channel's param override writes
+// the JSON path, in either the legacy map form or the operations form.
+func ParamOverrideWritesPath(info *RelayInfo, path string) bool {
+	paramOverride := getParamOverrideMap(info)
+	if len(paramOverride) == 0 {
+		return false
+	}
+	operations, ok := tryParseOperations(paramOverride)
+	if !ok {
+		_, writes := paramOverride[path]
+		return writes
+	}
+	for _, operation := range operations {
+		if operation.Mode == "delete" {
+			continue
+		}
+		if operation.Path == path || operation.To == path {
+			return true
+		}
+	}
+	return false
+}
+
 func getParamOverrideMap(info *RelayInfo) map[string]any {
 	if info == nil || info.ChannelMeta == nil {
 		return nil

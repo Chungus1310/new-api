@@ -341,10 +341,10 @@ func ConsentScopeFor(modelName string) ConsentScope {
 	}
 	resolved, groups := consentModelGroups(modelName)
 	scope := consentScope(groupDataPolicyState(), resolved, groups)
-	// Request names are caller input, so the cache is bounded by dropping it whole.
+	// Request names are caller input, so the cache is bounded; unknown names are
+	// cached too, so a stream of typos costs one lookup each per TTL.
 	if consentScopeCacheSize.Load() >= consentScopeCacheMax {
-		consentScopeCache.Clear()
-		consentScopeCacheSize.Store(0)
+		trimConsentScopeCache(generation)
 	}
 	if _, loaded := consentScopeCache.Swap(modelName, consentScopeEntry{generation: generation, expires: time.Now().Add(consentScopeCacheTTL), scope: scope}); !loaded {
 		consentScopeCacheSize.Add(1)
@@ -352,11 +352,39 @@ func ConsentScopeFor(modelName string) ConsentScope {
 	return scope
 }
 
+// trimConsentScopeCache drops stale entries first and, when every entry is
+// fresh, half of them, so a burst of new names never empties the whole cache.
+func trimConsentScopeCache(generation uint64) {
+	now := time.Now()
+	removed := int64(0)
+	consentScopeCache.Range(func(key, value any) bool {
+		if entry, ok := value.(consentScopeEntry); !ok || entry.generation != generation || now.After(entry.expires) {
+			consentScopeCache.Delete(key)
+			removed++
+		}
+		return true
+	})
+	if removed == 0 {
+		evict := true
+		consentScopeCache.Range(func(key, _ any) bool {
+			if evict {
+				consentScopeCache.Delete(key)
+				removed++
+			}
+			evict = !evict
+			return true
+		})
+	}
+	consentScopeCacheSize.Add(-removed)
+}
+
 // RecordedConsentScope is the scope a new consent records: every group that
 // lists the model, enabled or not, so a lane that is down for a moment and
 // comes back does not invalidate the consent.
 func RecordedConsentScope(modelName string) ConsentScope {
-	resolved, groups := consentModelGroups(modelName)
+	resolved, cached := consentModelGroups(modelName)
+	// The enabled groups come from the shared pricing map.
+	groups := slices.Clone(cached)
 	listed, err := GroupsListingModel(resolved)
 	if err != nil {
 		common.SysError("failed to list groups of model " + resolved + ": " + err.Error())
@@ -384,8 +412,11 @@ func consentModelGroups(modelName string) (string, []string) {
 			return normalized, groups
 		}
 	}
-	if groups, err := GroupsListingModel(modelName); err == nil && len(groups) > 0 {
-		return modelName, groups
+	// The in-memory channel list answers for unknown names without the abilities scan.
+	if !common.MemoryCacheEnabled || ModelHasAnyChannel(modelName) {
+		if groups, err := GroupsListingModel(modelName); err == nil && len(groups) > 0 {
+			return modelName, groups
+		}
 	}
 	resolved, ok := ResolveModelNameVariant(modelName)
 	if !ok {

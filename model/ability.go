@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -300,7 +301,9 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 
 	var channels []*Channel
 	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
-		if identityFilterRequiresKey(filters) {
+		if identityFilterRequiresKey(filters) || slices.ContainsFunc(filters, func(f dto.ChannelFilter) bool {
+			return f.Kind == dto.FilterOwnPurposeObjection
+		}) {
 			return nil
 		}
 		return abilities

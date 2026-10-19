@@ -333,7 +333,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeURLForLog(fullRequestURL))
-	requestBody, err = stripClientIdentifiers(info, requestBody)
+	requestBody, err = stripClientIdentifiers(c, info, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("strip client identifiers failed: %w", err)
 	}
@@ -365,9 +365,13 @@ var clientIdentifierPaths = []string{"user", "safety_identifier", "metadata.user
 
 // stripClientIdentifiers removes the ids a client attaches to a request before it
 // reaches a provider that trains on or retains inputs, pass-through included:
-// such a provider gets the content and nothing that links it to a person.
-func stripClientIdentifiers(info *common.RelayInfo, body io.Reader) (io.Reader, error) {
-	if body == nil || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() {
+// such a provider gets the content and nothing that links it to a person. A path
+// the channel's param override writes is kept, since an admin set it on purpose.
+func stripClientIdentifiers(c *gin.Context, info *common.RelayInfo, body io.Reader) (io.Reader, error) {
+	if body == nil || !info.ChannelSetting.DataPolicy.UsesInputsForOwnPurposes() || upstreamRequiresUser(info) {
+		return body, nil
+	}
+	if contentType := c.Request.Header.Get("Content-Type"); contentType != "" && !strings.Contains(strings.ToLower(contentType), "json") {
 		return body, nil
 	}
 	var raw []byte
@@ -386,13 +390,17 @@ func stripClientIdentifiers(info *common.RelayInfo, body io.Reader) (io.Reader, 
 	if err != nil {
 		return nil, err
 	}
+	if !gjson.ValidBytes(raw) {
+		return body, nil
+	}
 	stripped := raw
 	changed := false
 	for i, value := range gjson.GetManyBytes(raw, clientIdentifierPaths...) {
-		if !value.Exists() {
+		path := clientIdentifierPaths[i]
+		if !value.Exists() || common.ParamOverrideWritesPath(info, path) {
 			continue
 		}
-		if stripped, err = sjson.DeleteBytes(stripped, clientIdentifierPaths[i]); err != nil {
+		if stripped, err = sjson.DeleteBytes(stripped, path); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -401,6 +409,18 @@ func stripClientIdentifiers(info *common.RelayInfo, body io.Reader) (io.Reader, 
 		return body, nil
 	}
 	return bytes.NewReader(stripped), nil
+}
+
+// upstreamRequiresUser lists upstreams that reject a request without a top-level
+// user: Dify, and Volcengine TTS, whose user object is a fixed placeholder.
+func upstreamRequiresUser(info *common.RelayInfo) bool {
+	switch info.ChannelType {
+	case constant2.ChannelTypeDify:
+		return true
+	case constant2.ChannelTypeVolcEngine:
+		return info.RelayMode == constant.RelayModeAudioSpeech
+	}
+	return false
 }
 
 func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {

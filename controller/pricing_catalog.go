@@ -784,10 +784,14 @@ func ownPurposeSummary(scope model.ConsentScope) *dto.OwnPurposeSummary {
 	if !scope.TrainsOrRetains && !scope.Required {
 		return nil
 	}
+	countries := scope.Countries
+	if countries == nil {
+		countries = []string{}
+	}
 	return &dto.OwnPurposeSummary{
 		TrainsOrRetains: scope.TrainsOrRetains,
 		ConsentRequired: scope.Required,
-		Countries:       scope.Countries,
+		Countries:       countries,
 	}
 }
 
