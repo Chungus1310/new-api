@@ -190,7 +190,7 @@ var (
 const consentProviderTTL = 60 * time.Second
 
 // ConsentProviders lists every provider a model in the catalog needs a consent
-// for, offline models included, with aliases assigned. Shared and cached.
+// for, over enabled and disabled lanes, with aliases assigned. Shared and cached.
 func ConsentProviders() []ConsentProvider {
 	if cached := consentProviderCache.Load(); cached != nil && time.Since(cached.builtAt) < consentProviderTTL {
 		return cached.providers
@@ -202,21 +202,20 @@ func ConsentProviders() []ConsentProvider {
 	}
 	state := groupDataPolicyState()
 	pricing := GetPricing()
-	var offline []string
+	names := make([]string, 0, len(pricing))
 	for _, p := range pricing {
-		if len(p.EnableGroup) == 0 {
-			offline = append(offline, p.ModelName)
-		}
+		names = append(names, p.ModelName)
 	}
-	listed := map[string][]string{}
-	if len(offline) > 0 {
-		listed = ListedModelGroups(offline)
-	}
+	// Disabled lanes count too, as in RecordedConsentScope: a consent given now
+	// must still cover them when the retest brings them back.
+	listed := ListedModelGroups(names)
 	byProvider := map[string]*ConsentProvider{}
 	for _, p := range pricing {
-		groups := p.EnableGroup
-		if len(groups) == 0 {
-			groups = listed[p.ModelName]
+		groups := slices.Clone(p.EnableGroup)
+		for _, g := range listed[p.ModelName] {
+			if !slices.Contains(groups, g) {
+				groups = append(groups, g)
+			}
 		}
 		scope := consentScope(state, p.ModelName, groups)
 		if !scope.Required {
