@@ -235,7 +235,9 @@ func GetLogByRequest(c fuego.ContextWithParams[dto.GetLogByRequestParams]) (*dto
 	if err != nil {
 		return dto.Fail[dto.LogByRequestData](err.Error())
 	}
-	if l == nil {
+	// The route is public and request ids ride response headers: without this any
+	// caller read any tenant's lane, tokens and charge for a known id.
+	if l == nil || l.UserId != dto.UserID(c) || l.UserId == 0 {
 		return dto.Ok(dto.LogByRequestData{})
 	}
 	return dto.Ok(dto.LogByRequestData{
