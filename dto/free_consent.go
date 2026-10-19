@@ -46,11 +46,13 @@ type ProviderConsentItem struct {
 	ModelCount      int      `json:"model_count"`
 	Models          []string `json:"models"`
 	// Lane tags as they appear in public group names.
-	Tags             []string                   `json:"tags"`
-	LaneCount        int                        `json:"lane_count"`
-	ActiveLaneCount  int                        `json:"active_lane_count"`
-	ActiveModelCount int                        `json:"active_model_count"`
-	ModelDetails     []ProviderConsentModelItem `json:"model_details"`
+	Tags               []string                   `json:"tags"`
+	LaneCount          int                        `json:"lane_count"`
+	ActiveLaneCount    int                        `json:"active_lane_count"`
+	ActiveModelCount   int                        `json:"active_model_count"`
+	ChannelCount       int                        `json:"channel_count"`
+	ActiveChannelCount int                        `json:"active_channel_count"`
+	ModelDetails       []ProviderConsentModelItem `json:"model_details"`
 	// Some channel of this provider is enabled.
 	Active bool `json:"active"`
 	// given, missing, or with ?model also model_consent: only an earlier model
@@ -60,8 +62,10 @@ type ProviderConsentItem struct {
 }
 
 type ProviderConsentModelItem struct {
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
+	Name           string `json:"name"`
+	Active         bool   `json:"active"`
+	Channels       int    `json:"channels"`
+	ActiveChannels int    `json:"active_channels"`
 }
 
 // ProviderConsentListData lists providers; with ?model only that model's, plus

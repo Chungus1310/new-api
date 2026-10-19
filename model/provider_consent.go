@@ -166,12 +166,15 @@ type ConsentProvider struct {
 	TrainsOrRetains bool
 	Models          []string
 	// Lane tags of the provider's channels, as they appear in group names.
-	Tags            []string
-	LaneCount       int
-	ActiveLaneCount int
-	// Models with an enabled channel of this provider.
-	ActiveModels map[string]bool
-	Active       bool
+	Tags               []string
+	LaneCount          int
+	ActiveLaneCount    int
+	ChannelCount       int
+	ActiveChannelCount int
+	// Channels and enabled channels of this provider per model it lists.
+	ModelChannels       map[string]int
+	ActiveModelChannels map[string]int
+	Active              bool
 }
 
 type consentProviderCatalog struct {
@@ -278,8 +281,8 @@ func fillConsentProviderFacts(state *groupDataPolicySnapshot, byProvider map[str
 	}
 }
 
-// fillConsentProviderLanes counts each provider's lanes (channel tags) and
-// marks lanes and models that have an enabled channel.
+// fillConsentProviderLanes counts each provider's channels and lanes (channel
+// tags), overall, per model and enabled.
 func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 	var channels []*Channel
 	if common.MemoryCacheEnabled {
@@ -310,6 +313,18 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 			continue
 		}
 		enabled := channel.Status == common.ChannelStatusEnabled
+		entry.ChannelCount++
+		if entry.ModelChannels == nil {
+			entry.ModelChannels = map[string]int{}
+			entry.ActiveModelChannels = map[string]int{}
+		}
+		for _, m := range channel.GetModels() {
+			m = strings.TrimSpace(m)
+			entry.ModelChannels[m]++
+			if enabled {
+				entry.ActiveModelChannels[m]++
+			}
+		}
 		lane := "#" + strconv.Itoa(channel.Id)
 		if channel.Tag != nil && strings.TrimSpace(*channel.Tag) != "" {
 			lane = strings.TrimSpace(*channel.Tag)
@@ -322,12 +337,7 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 			continue
 		}
 		entry.Active = true
-		if entry.ActiveModels == nil {
-			entry.ActiveModels = map[string]bool{}
-		}
-		for _, m := range channel.GetModels() {
-			entry.ActiveModels[strings.TrimSpace(m)] = true
-		}
+		entry.ActiveChannelCount++
 	}
 	for provider, entry := range byProvider {
 		entry.Tags = []string{}

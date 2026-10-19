@@ -42,13 +42,14 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 			entry.Tags = []string{}
 		}
 		entry.LaneCount, entry.ActiveLaneCount, entry.Active = p.LaneCount, p.ActiveLaneCount, p.Active
+		entry.ChannelCount, entry.ActiveChannelCount = p.ChannelCount, p.ActiveChannelCount
 		entry.ModelDetails = make([]dto.ProviderConsentModelItem, 0, len(models))
 		for _, name := range models {
-			active := p.ActiveModels[name]
-			if active {
+			activeChannels := p.ActiveModelChannels[name]
+			if activeChannels > 0 {
 				entry.ActiveModelCount++
 			}
-			entry.ModelDetails = append(entry.ModelDetails, dto.ProviderConsentModelItem{Name: name, Active: active})
+			entry.ModelDetails = append(entry.ModelDetails, dto.ProviderConsentModelItem{Name: name, Active: activeChannels > 0, Channels: p.ModelChannels[name], ActiveChannels: activeChannels})
 		}
 		if at, ok := givenAt[p.Alias]; ok {
 			entry.Status = "given"
@@ -102,8 +103,9 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 	return dto.Ok(dto.ProviderConsentListData{Model: scope.Model, Covered: &covered, Providers: items})
 }
 
-// sortProviderConsentItems puts active providers first, then those serving the
-// most models and lanes.
+// sortProviderConsentItems puts active providers first, then those with the
+// most enabled channels, since each channel takes its share of the traffic,
+// then models and lanes.
 func sortProviderConsentItems(items []dto.ProviderConsentItem) {
 	slices.SortStableFunc(items, func(a, b dto.ProviderConsentItem) int {
 		if a.Active != b.Active {
@@ -111,6 +113,9 @@ func sortProviderConsentItems(items []dto.ProviderConsentItem) {
 				return -1
 			}
 			return 1
+		}
+		if c := cmp.Compare(b.ActiveChannelCount, a.ActiveChannelCount); c != 0 {
+			return c
 		}
 		if c := cmp.Compare(b.ActiveModelCount, a.ActiveModelCount); c != 0 {
 			return c
