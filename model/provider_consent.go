@@ -256,6 +256,16 @@ func ConsentProviders() []ConsentProvider {
 		slices.Sort(entry.Models)
 		out = append(out, *entry)
 	}
+	// Two providers whose tags reduce to the same label are told apart by country.
+	labelCount := map[string]int{}
+	for _, p := range out {
+		labelCount[p.Label]++
+	}
+	for i := range out {
+		if labelCount[out[i].Label] > 1 && out[i].Country != "" {
+			out[i].Label += " (" + out[i].Country + ")"
+		}
+	}
 	slices.SortFunc(out, func(a, b ConsentProvider) int { return strings.Compare(a.Alias, b.Alias) })
 	consentProviderCache.Store(&consentProviderCatalog{builtAt: time.Now(), providers: out})
 	return out
@@ -356,60 +366,23 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 	}
 }
 
-// ProviderLabel names a provider by its lane tags, collapsing numbered tags of
-// one prefix into ranges: cfp1..cfp8 is "cfp 1 to 8", mcd1 with open1..open3 is
-// "mcd1, open 1 to 3".
+// ProviderLabel names a provider by its lane tag prefixes without their
+// numbers: cfp1..cfp8 is "cfp", mcd1 with open1..open3 is "mcd, open". A
+// prefix shorter than two characters keeps the whole tag, so a7 stays "a7".
 func ProviderLabel(tags []string, alias string) string {
 	if len(tags) == 0 {
 		return alias
 	}
-	numbered := map[string][]int{}
-	var plain []string
+	var names []string
 	for _, tag := range tags {
-		end := len(tag)
-		for end > 0 && tag[end-1] >= '0' && tag[end-1] <= '9' {
-			end--
+		name := strings.TrimRight(tag, "0123456789")
+		if len(name) < 2 {
+			name = tag
 		}
-		n, err := strconv.Atoi(tag[end:])
-		if end == 0 || end == len(tag) || err != nil || strings.HasPrefix(tag[end:], "0") {
-			plain = append(plain, tag)
-			continue
-		}
-		numbered[tag[:end]] = append(numbered[tag[:end]], n)
+		names = append(names, name)
 	}
-	type part struct{ key, text string }
-	var parts []part
-	for _, tag := range plain {
-		parts = append(parts, part{tag, tag})
-	}
-	for prefix, numbers := range numbered {
-		if len(numbers) == 1 {
-			parts = append(parts, part{prefix, prefix + strconv.Itoa(numbers[0])})
-			continue
-		}
-		slices.Sort(numbers)
-		numbers = slices.Compact(numbers)
-		var ranges []string
-		for i := 0; i < len(numbers); {
-			j := i
-			for j+1 < len(numbers) && numbers[j+1] == numbers[j]+1 {
-				j++
-			}
-			if i == j {
-				ranges = append(ranges, strconv.Itoa(numbers[i]))
-			} else {
-				ranges = append(ranges, strconv.Itoa(numbers[i])+" to "+strconv.Itoa(numbers[j]))
-			}
-			i = j + 1
-		}
-		parts = append(parts, part{prefix, prefix + " " + strings.Join(ranges, ", ")})
-	}
-	slices.SortFunc(parts, func(a, b part) int { return strings.Compare(a.key, b.key) })
-	texts := make([]string, len(parts))
-	for i, p := range parts {
-		texts[i] = p.text
-	}
-	return strings.Join(texts, ", ")
+	slices.Sort(names)
+	return strings.Join(slices.Compact(names), ", ")
 }
 
 // ProviderAliasesFor maps internal providers to their aliases; a provider
