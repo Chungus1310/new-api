@@ -23,18 +23,13 @@ const (
 	mediaLinkImageFetchTimeout = 60 * time.Second
 )
 
-// copyMarkedMP4 streams an MP4 or MOV body and appends the XMP box once the body
-// ended cleanly on a box boundary.
+// copyMarkedMP4 streams an MP4 or MOV body with the XMP box where MP4Writer puts it.
 func copyMarkedMP4(w io.Writer, body io.Reader) error {
-	var tracker aimark.MP4Tracker
-	if _, err := io.Copy(w, io.TeeReader(body, &tracker)); err != nil {
+	marked := &aimark.MP4Writer{W: w}
+	if _, err := io.Copy(marked, body); err != nil {
 		return err
 	}
-	if !tracker.ShouldAppend() {
-		return nil
-	}
-	_, err := w.Write(aimark.MP4Box())
-	return err
+	return marked.Close()
 }
 
 func mediaLinkRangeFetcher(rawURL string) mp4RangeFetcher {

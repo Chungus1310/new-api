@@ -31,9 +31,10 @@ const (
 type mp4RangeFetcher func(ctx context.Context, rangeHeader, ifRange string) (*http.Response, error)
 
 // markedMP4Plan describes the marked file a Range request is answered against: the
-// upstream bytes followed by the XMP box when mark is set.
+// upstream bytes with the XMP box inserted at insertAt when mark is set.
 type markedMP4Plan struct {
 	size        int64
+	insertAt    int64
 	mark        bool
 	contentType string
 	etag        string
@@ -137,7 +138,7 @@ func probeMarkedMP4(ctx context.Context, fetch mp4RangeFetcher) (markedMP4Plan, 
 		}
 		return io.ReadAll(io.LimitReader(part.Body, int64(n)))
 	}
-	mark, err := aimark.ScanMP4(size, markedMP4ProbeReads, readAt)
+	insertAt, mark, err := aimark.ScanMP4(size, markedMP4ProbeReads, readAt)
 	if err != nil {
 		return markedMP4Plan{}, err
 	}
@@ -145,7 +146,7 @@ func probeMarkedMP4(ctx context.Context, fetch mp4RangeFetcher) (markedMP4Plan, 
 	if !strings.HasPrefix(contentType, "video/") {
 		contentType = "video/mp4"
 	}
-	return markedMP4Plan{size: size, mark: mark, contentType: contentType, etag: etag}, nil
+	return markedMP4Plan{size: size, insertAt: insertAt, mark: mark, contentType: contentType, etag: etag}, nil
 }
 
 // parseContentRange reads "bytes start-end/size" with a known size.
@@ -240,17 +241,29 @@ func serveMarkedMP4Range(c *gin.Context, key string, fetch mp4RangeFetcher) bool
 		return true
 	}
 
+	// The marked file is upstream[:at], the box, then upstream[at:], so the
+	// requested span maps to one contiguous upstream span around the box.
+	at, boxEnd := plan.insertAt, plan.insertAt+int64(len(box))
+	upstreamStart, upstreamEnd := start, end
+	if start >= at {
+		upstreamStart = max(start-int64(len(box)), at)
+	}
+	if end >= boxEnd {
+		upstreamEnd = end - int64(len(box))
+	} else if end >= at {
+		upstreamEnd = at - 1
+	}
+
 	var upstream io.Reader
-	if start < plan.size && request.Method == http.MethodGet {
-		upstreamEnd := min(end, plan.size-1)
-		resp, err := fetch(request.Context(), fmt.Sprintf("bytes=%d-%d", start, upstreamEnd), plan.etag)
+	if upstreamStart <= upstreamEnd && request.Method == http.MethodGet {
+		resp, err := fetch(request.Context(), fmt.Sprintf("bytes=%d-%d", upstreamStart, upstreamEnd), plan.etag)
 		if err != nil {
 			forgetMarkedMP4Plan(key)
 			return false
 		}
 		defer resp.Body.Close()
 		partStart, partEnd, partSize, ok := parseContentRange(resp.Header.Get("Content-Range"))
-		if resp.StatusCode != http.StatusPartialContent || !ok || partStart != start || partEnd != upstreamEnd || partSize != plan.size {
+		if resp.StatusCode != http.StatusPartialContent || !ok || partStart != upstreamStart || partEnd != upstreamEnd || partSize != plan.size {
 			forgetMarkedMP4Plan(key)
 			return false
 		}
@@ -269,14 +282,21 @@ func serveMarkedMP4Range(c *gin.Context, key string, fetch mp4RangeFetcher) bool
 	if request.Method == http.MethodHead {
 		return true
 	}
-	if upstream != nil {
-		if _, err := io.CopyN(c.Writer, upstream, min(end, plan.size-1)-start+1); err != nil {
+	if upstream != nil && upstreamStart < at {
+		if _, err := io.CopyN(c.Writer, upstream, min(upstreamEnd, at-1)-upstreamStart+1); err != nil {
 			logger.LogError(request.Context(), common.LogText("Failed to stream marked video range: %v", err))
 			return true
 		}
 	}
-	if end >= plan.size {
-		_, _ = c.Writer.Write(box[max(start, plan.size)-plan.size : end-plan.size+1])
+	if start < boxEnd && end >= at {
+		if _, err := c.Writer.Write(box[max(start, at)-at : min(end, boxEnd-1)-at+1]); err != nil {
+			return true
+		}
+	}
+	if upstream != nil && upstreamEnd >= at {
+		if _, err := io.CopyN(c.Writer, upstream, upstreamEnd-max(upstreamStart, at)+1); err != nil {
+			logger.LogError(request.Context(), common.LogText("Failed to stream marked video range: %v", err))
+		}
 	}
 	return true
 }
