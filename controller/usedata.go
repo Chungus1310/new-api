@@ -26,14 +26,26 @@ func GetAllQuotaDates(c fuego.ContextWithParams[dto.GetAllQuotaDatesParams]) (*d
 // GetQuotaDataSummary returns SQL-aggregated totals over quota_data. Exists so
 // totals-only consumers (the site badge) stop pulling the entire table (1M+
 // rows) just to sum three columns.
+// Same end the storefront sends (2100-01-01), so both share one cached aggregate.
+const publicSummaryEnd = 4102444800
+
 func GetQuotaDataSummary(c fuego.ContextWithParams[dto.GetQuotaSummaryParams]) (*dto.Response[*model.QuotaDataSummary], error) {
 	p, err := dto.ParseParams[dto.GetQuotaSummaryParams](c)
 	if err != nil {
 		return dto.Fail[*model.QuotaDataSummary]("Invalid parameters")
 	}
+	// Anonymous and non-admin callers get the all-time public totals only: a free
+	// window or quota (billed revenue) would let anyone chart usage hour by hour.
+	admin := dto.GinCtx(c).GetInt("role") >= common.RoleAdminUser
+	if !admin {
+		p.StartTimestamp, p.EndTimestamp = 0, publicSummaryEnd
+	}
 	summary, err := model.GetQuotaDataSummary(p.StartTimestamp, p.EndTimestamp)
 	if err != nil {
 		return dto.Fail[*model.QuotaDataSummary](err.Error())
+	}
+	if !admin {
+		return dto.Ok(&model.QuotaDataSummary{Count: summary.Count, TokenUsed: summary.TokenUsed, AvgTpm: summary.AvgTpm})
 	}
 	return dto.Ok(summary)
 }
