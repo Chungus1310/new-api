@@ -71,6 +71,12 @@ type GrantDiscordQuotaRequest struct {
 	Source    string `json:"source,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 	GrantedBy string `json:"granted_by,omitempty"`
+	// DryRun only resolves the linked user and moves no quota, so the bot can claim
+	// a once-per-account reward against that user id before paying it.
+	DryRun bool `json:"dry_run,omitempty"`
+	// ExpectedUserId refuses the grant when the Discord ID is now linked to a
+	// different user than the one the caller claimed the reward for.
+	ExpectedUserId int `json:"expected_user_id,omitempty"`
 }
 
 // GrantDiscordQuotaData is the response data for POST /api/user/discord_grant.
@@ -79,6 +85,8 @@ type GrantDiscordQuotaData struct {
 	Linked bool `json:"linked"`
 	// IpDuplicate is true when the grant was refused because another account shares the register IP.
 	IpDuplicate bool `json:"ip_duplicate,omitempty"`
+	// UserMismatch is true when ExpectedUserId was set and the Discord ID is linked to another user.
+	UserMismatch bool `json:"user_mismatch,omitempty"`
 }
 
 // TransferDiscordQuotaRequest is the request body for POST /api/user/discord_transfer.

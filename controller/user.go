@@ -1763,7 +1763,7 @@ func GrantDiscordQuota(c fuego.ContextWithBody[dto.GrantDiscordQuotaRequest]) (*
 	if err != nil {
 		return dto.Fail[dto.GrantDiscordQuotaData]("Invalid parameters")
 	}
-	if req.DiscordId == "" || req.Quota <= 0 || req.Quota > maxDiscordGrantQuota {
+	if req.DiscordId == "" || (!req.DryRun && (req.Quota <= 0 || req.Quota > maxDiscordGrantQuota)) {
 		return dto.Fail[dto.GrantDiscordQuotaData]("Invalid parameters")
 	}
 
@@ -1777,6 +1777,12 @@ func GrantDiscordQuota(c fuego.ContextWithBody[dto.GrantDiscordQuotaRequest]) (*
 	}
 	if user.Id == 0 {
 		return dto.Ok(dto.GrantDiscordQuotaData{Linked: false})
+	}
+	if req.DryRun {
+		return dto.Ok(dto.GrantDiscordQuotaData{UserId: user.Id, Linked: true})
+	}
+	if req.ExpectedUserId != 0 && req.ExpectedUserId != user.Id {
+		return dto.Ok(dto.GrantDiscordQuotaData{UserId: user.Id, Linked: true, UserMismatch: true})
 	}
 
 	// The shared-IP check is a gate for new accounts, not a state an established
