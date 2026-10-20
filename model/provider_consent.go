@@ -185,6 +185,8 @@ type ConsentProvider struct {
 type consentProviderCatalog struct {
 	builtAt   time.Time
 	providers []ConsentProvider
+	// Lanes and facts of every provider with a channel, consent or not.
+	all map[string]*ConsentProvider
 }
 
 var (
@@ -214,6 +216,7 @@ func ConsentProviders() []ConsentProvider {
 	// Disabled lanes count too, as in RecordedConsentScope: a consent given now
 	// must still cover them when the retest brings them back.
 	listed := ListedModelGroups(names)
+	all := consentProviderLanes()
 	byProvider := map[string]*ConsentProvider{}
 	for _, p := range pricing {
 		groups := slices.Clone(p.EnableGroup)
@@ -229,14 +232,16 @@ func ConsentProviders() []ConsentProvider {
 		for _, provider := range scope.Providers {
 			entry := byProvider[provider]
 			if entry == nil {
-				entry = &ConsentProvider{Provider: provider}
+				entry = &ConsentProvider{Provider: provider, Tags: []string{}}
+				if lanes := all[provider]; lanes != nil {
+					copied := *lanes
+					entry = &copied
+				}
 				byProvider[provider] = entry
 			}
 			entry.Models = append(entry.Models, p.ModelName)
 		}
 	}
-	fillConsentProviderFacts(state, byProvider)
-	fillConsentProviderLanes(byProvider)
 	countries := make(map[string]string, len(byProvider))
 	for p, entry := range byProvider {
 		countries[p] = entry.Country
@@ -270,37 +275,14 @@ func ConsentProviders() []ConsentProvider {
 		}
 	}
 	slices.SortFunc(out, func(a, b ConsentProvider) int { return strings.Compare(a.Alias, b.Alias) })
-	consentProviderCache.Store(&consentProviderCatalog{builtAt: time.Now(), providers: out})
+	consentProviderCache.Store(&consentProviderCatalog{builtAt: time.Now(), providers: out, all: all})
 	return out
 }
 
-func fillConsentProviderFacts(state *groupDataPolicySnapshot, byProvider map[string]*ConsentProvider) {
-	for _, recipients := range state.recipients {
-		for _, r := range recipients.ownPurpose {
-			if entry := byProvider[r.provider]; entry != nil {
-				entry.TrainsOrRetains = true
-				entry.Unsafe = entry.Unsafe || r.unsafe
-				entry.OnwardUnvetted = entry.OnwardUnvetted || (r.unsafe && (kitdto.IsEEACountry(r.country) || kitdto.IsEUAdequacyCountry(r.country)))
-				if entry.Country == "" {
-					entry.Country = r.country
-				}
-			}
-		}
-		for _, r := range recipients.unknown {
-			if entry := byProvider[r.provider]; entry != nil {
-				entry.Unsafe = entry.Unsafe || r.unsafe
-				entry.OnwardUnvetted = entry.OnwardUnvetted || (r.unsafe && (kitdto.IsEEACountry(r.country) || kitdto.IsEUAdequacyCountry(r.country)))
-				if entry.Country == "" {
-					entry.Country = r.country
-				}
-			}
-		}
-	}
-}
-
-// fillConsentProviderLanes counts each provider's channels and lanes (channel
-// tags), overall, per model and enabled.
-func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
+// consentProviderLanes collects every provider with a channel: its facts from
+// the channel policies, and its channels and lanes (channel tags), overall,
+// per model and enabled.
+func consentProviderLanes() map[string]*ConsentProvider {
 	var channels []*Channel
 	if common.MemoryCacheEnabled {
 		channelSyncLock.RLock()
@@ -310,31 +292,39 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 		channelSyncLock.RUnlock()
 	} else if err := DB.Select("id", "tag", "status", "models", "setting").Find(&channels).Error; err != nil {
 		common.SysError("failed to load channels for consent providers: " + err.Error())
-		return
+		return map[string]*ConsentProvider{}
 	}
+	all := map[string]*ConsentProvider{}
 	lanes := map[string]map[string]bool{}
 	for _, channel := range channels {
 		var setting kitdto.ChannelSettings
 		if channel.Setting != nil && *channel.Setting != "" {
 			_ = common.UnmarshalJsonStr(*channel.Setting, &setting)
 		}
+		policy := setting.DataPolicy
 		provider := ""
-		if setting.DataPolicy != nil {
-			provider = setting.DataPolicy.Provider
+		if policy != nil {
+			provider = policy.Provider
 		}
 		if provider == "" {
 			provider = "channel:" + strconv.Itoa(channel.Id)
 		}
-		entry := byProvider[provider]
+		entry := all[provider]
 		if entry == nil {
-			continue
+			entry = &ConsentProvider{Provider: provider, ModelChannels: map[string]int{}, ActiveModelChannels: map[string]int{}}
+			all[provider] = entry
+		}
+		if policy != nil {
+			unsafe := policy.UnsafeThirdCountry()
+			entry.Unsafe = entry.Unsafe || unsafe
+			entry.OnwardUnvetted = entry.OnwardUnvetted || (unsafe && (kitdto.IsEEACountry(policy.SeatCountry) || kitdto.IsEUAdequacyCountry(policy.SeatCountry)))
+			entry.TrainsOrRetains = entry.TrainsOrRetains || policy.UsesInputsForOwnPurposes()
+			if entry.Country == "" {
+				entry.Country = policy.SeatCountry
+			}
 		}
 		enabled := channel.Status == common.ChannelStatusEnabled
 		entry.ChannelCount++
-		if entry.ModelChannels == nil {
-			entry.ModelChannels = map[string]int{}
-			entry.ActiveModelChannels = map[string]int{}
-		}
 		for _, m := range channel.GetModels() {
 			m = strings.TrimSpace(m)
 			entry.ModelChannels[m]++
@@ -350,13 +340,12 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 			lanes[provider] = map[string]bool{}
 		}
 		lanes[provider][lane] = lanes[provider][lane] || enabled
-		if !enabled {
-			continue
+		if enabled {
+			entry.Active = true
+			entry.ActiveChannelCount++
 		}
-		entry.Active = true
-		entry.ActiveChannelCount++
 	}
-	for provider, entry := range byProvider {
+	for provider, entry := range all {
 		entry.Tags = []string{}
 		for lane, active := range lanes[provider] {
 			entry.LaneCount++
@@ -369,6 +358,64 @@ func fillConsentProviderLanes(byProvider map[string]*ConsentProvider) {
 		}
 		slices.Sort(entry.Tags)
 	}
+	return all
+}
+
+// OtherProvider is a provider of a model that needs no consent, with why.
+type OtherProvider struct {
+	Label          string
+	Country        string
+	Unsafe         bool
+	OnwardUnvetted bool
+	Active         bool
+	// safe_country: uses inputs for its own purposes from a safe country;
+	// prompts_unknown_paid: practice unknown, on a paid model;
+	// no_own_purpose: neither trains on nor retains inputs.
+	Reason string
+}
+
+// ModelOtherProviders lists the providers of the model's recorded groups that
+// are not in consentProviders, each once, by label.
+func ModelOtherProviders(modelName string, consentProviders []string) []OtherProvider {
+	ConsentProviders()
+	catalog := consentProviderCache.Load()
+	resolved, groups := recordedConsentGroups(modelName)
+	state := groupDataPolicyState()
+	reasons := map[string]string{}
+	var order []string
+	note := func(recipients []dataRecipient, reason string) {
+		for _, r := range recipients {
+			if slices.Contains(consentProviders, r.provider) {
+				continue
+			}
+			if _, seen := reasons[r.provider]; !seen {
+				order = append(order, r.provider)
+				reasons[r.provider] = reason
+			}
+		}
+	}
+	for _, group := range expandGroups(state, groups) {
+		recipients := state.recipients[group]
+		note(recipients.ownPurpose, "safe_country")
+		note(recipients.unknown, "prompts_unknown_paid")
+		note(recipients.other, "no_own_purpose")
+	}
+	out := make([]OtherProvider, 0, len(order))
+	for _, provider := range order {
+		item := OtherProvider{Reason: reasons[provider]}
+		if catalog != nil {
+			if lanes := catalog.all[provider]; lanes != nil {
+				item.Label = ProviderLabel(lanes.Tags, "")
+				item.Country = lanes.Country
+				item.Unsafe = lanes.Unsafe
+				item.OnwardUnvetted = lanes.OnwardUnvetted
+				item.Active = lanes.ActiveModelChannels[resolved] > 0
+			}
+		}
+		out = append(out, item)
+	}
+	slices.SortFunc(out, func(a, b OtherProvider) int { return strings.Compare(a.Label, b.Label) })
+	return out
 }
 
 // ProviderLabel names a provider by its lane tag prefixes without their

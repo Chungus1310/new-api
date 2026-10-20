@@ -30,6 +30,8 @@ type groupRecipients struct {
 	ownPurpose []dataRecipient
 	// Channels whose policy leaves prompts unknown or records none.
 	unknown []dataRecipient
+	// Channels whose provider neither trains on nor retains prompts.
+	other []dataRecipient
 	// True when some channel neither trains on nor retains prompts.
 	withoutOwnPurpose bool
 	// Seat countries of every channel in the group.
@@ -140,6 +142,7 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 				r.unknown = append(r.unknown, recipient)
 				r.withoutOwnPurpose = true
 			default:
+				r.other = append(r.other, recipient)
 				r.withoutOwnPurpose = true
 			}
 			recipients[group] = r
@@ -419,6 +422,13 @@ func trimConsentScopeCache(generation uint64) {
 // lists the model, enabled or not, so a lane that is down for a moment and
 // comes back does not invalidate the consent.
 func RecordedConsentScope(modelName string) ConsentScope {
+	resolved, groups := recordedConsentGroups(modelName)
+	return consentScope(groupDataPolicyState(), resolved, groups)
+}
+
+// recordedConsentGroups is the resolved name and every group listing it,
+// enabled or not.
+func recordedConsentGroups(modelName string) (string, []string) {
 	resolved, cached := consentModelGroups(modelName)
 	// The enabled groups come from the shared pricing map.
 	groups := slices.Clone(cached)
@@ -431,7 +441,7 @@ func RecordedConsentScope(modelName string) ConsentScope {
 			groups = append(groups, g)
 		}
 	}
-	return consentScope(groupDataPolicyState(), resolved, groups)
+	return resolved, groups
 }
 
 // consentModelGroups resolves a requested name the way the distributor routes

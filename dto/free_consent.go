@@ -75,9 +75,23 @@ type ProviderConsentModelItem struct {
 // ProviderConsentListData lists providers; with ?model only that model's, plus
 // whether the model is covered.
 type ProviderConsentListData struct {
-	Model     string                `json:"model,omitempty"`
+	Model string `json:"model,omitempty"`
+	// Whether the providers now serving the model are all covered.
 	Covered   *bool                 `json:"covered,omitempty"`
 	Providers []ProviderConsentItem `json:"providers"`
+	// With ?model: the model's providers that need no consent, and why.
+	OtherProviders []ProviderOtherItem `json:"other_providers,omitempty"`
+}
+
+// ProviderOtherItem is a provider of the model that needs no consent. Reason is
+// safe_country, prompts_unknown_paid or no_own_purpose.
+type ProviderOtherItem struct {
+	Label          string `json:"label"`
+	Country        string `json:"country"`
+	Unsafe         bool   `json:"unsafe"`
+	OnwardUnvetted bool   `json:"onward_unvetted"`
+	Active         bool   `json:"active"`
+	Reason         string `json:"reason"`
 }
 
 // ProviderConsentGrantRequest names either aliases or a model, whose missing

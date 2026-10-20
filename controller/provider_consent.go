@@ -72,8 +72,11 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 		return dto.Ok(dto.ProviderConsentListData{Providers: items})
 	}
 
+	// Listed over every lane, enabled or not, as a grant records them; covered
+	// follows the lanes now serving the model, as the relay checks it.
 	scope := model.RecordedConsentScope(modelName)
-	covered := true
+	current := model.ConsentScopeFor(modelName)
+	covered := !current.Required || model.ConsentAccessFor(userId, guestId, current.Model, current.Providers) == model.ConsentAccessAllowed
 	items := []dto.ProviderConsentItem{}
 	if scope.Required {
 		modelCovered, err := model.ModelConsentProviders(userId, guestId, scope.Model)
@@ -86,8 +89,6 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 			if !ok {
 				alias, assigned := aliases[provider]
 				if !assigned {
-					// Not in the catalog yet, so no alias to consent to: the model stays uncovered.
-					covered = false
 					continue
 				}
 				p = model.ConsentProvider{Provider: provider, Alias: alias.Alias, Country: alias.Country}
@@ -97,14 +98,20 @@ func listProviderConsents(c dto.FuegoCtx, guest bool) (*dto.Response[dto.Provide
 				status = "model_consent"
 			}
 			entry := item(p, status)
-			if entry.Status == "missing" {
-				covered = false
-			}
+			entry.Active = p.ActiveModelChannels[scope.Model] > 0
 			items = append(items, entry)
 		}
 	}
 	sortProviderConsentItems(items)
-	return dto.Ok(dto.ProviderConsentListData{Model: scope.Model, Covered: &covered, Providers: items})
+	others := []dto.ProviderOtherItem{}
+	var consentProviders []string
+	if scope.Required {
+		consentProviders = scope.Providers
+	}
+	for _, o := range model.ModelOtherProviders(modelName, consentProviders) {
+		others = append(others, dto.ProviderOtherItem{Label: o.Label, Country: o.Country, Unsafe: o.Unsafe, OnwardUnvetted: o.OnwardUnvetted, Active: o.Active, Reason: o.Reason})
+	}
+	return dto.Ok(dto.ProviderConsentListData{Model: scope.Model, Covered: &covered, Providers: items, OtherProviders: others})
 }
 
 // sortProviderConsentItems puts active providers first, then those with the
