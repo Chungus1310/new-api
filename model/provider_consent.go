@@ -167,7 +167,10 @@ type ConsentProvider struct {
 	// none) while the seat itself is in the EEA or an adequacy country.
 	OnwardUnvetted  bool
 	TrainsOrRetains bool
-	Models          []string
+	// trains, retains or unknown, the riskiest over its channels; none when
+	// no channel may use inputs for its own purposes.
+	Practice string
+	Models   []string
 	// Lane tags of the provider's channels, as they appear in group names.
 	Tags []string
 	// Label is the visible name built from Tags, the alias when there are none.
@@ -314,11 +317,14 @@ func consentProviderLanes() map[string]*ConsentProvider {
 			entry = &ConsentProvider{Provider: provider, ModelChannels: map[string]int{}, ActiveModelChannels: map[string]int{}}
 			all[provider] = entry
 		}
+		if practice := policy.Practice(); entry.Practice == "" || promptsRisk[practice] > promptsRisk[entry.Practice] {
+			entry.Practice = practice
+		}
+		entry.TrainsOrRetains = entry.TrainsOrRetains || policy.UsesInputsForOwnPurposes()
 		if policy != nil {
 			unsafe := policy.UnsafeThirdCountry()
 			entry.Unsafe = entry.Unsafe || unsafe
 			entry.OnwardUnvetted = entry.OnwardUnvetted || (unsafe && (kitdto.IsEEACountry(policy.SeatCountry) || kitdto.IsEUAdequacyCountry(policy.SeatCountry)))
-			entry.TrainsOrRetains = entry.TrainsOrRetains || policy.UsesInputsForOwnPurposes()
 			if entry.Country == "" {
 				entry.Country = policy.SeatCountry
 			}
@@ -368,9 +374,9 @@ type OtherProvider struct {
 	Unsafe         bool
 	OnwardUnvetted bool
 	Active         bool
-	// safe_country: uses inputs for its own purposes from a safe country;
-	// prompts_unknown_paid: practice unknown, on a paid model;
-	// no_own_purpose: neither trains on nor retains inputs.
+	Practice       string
+	// safe_country: may use inputs for its own purposes (practice unknown
+	// included) from a safe country; no_own_purpose: records prompts none.
 	Reason string
 }
 
@@ -397,7 +403,6 @@ func ModelOtherProviders(modelName string, consentProviders []string) []OtherPro
 	for _, group := range expandGroups(state, groups) {
 		recipients := state.recipients[group]
 		note(recipients.ownPurpose, "safe_country")
-		note(recipients.unknown, "prompts_unknown_paid")
 		note(recipients.other, "no_own_purpose")
 	}
 	out := make([]OtherProvider, 0, len(order))
@@ -409,6 +414,7 @@ func ModelOtherProviders(modelName string, consentProviders []string) []OtherPro
 				item.Country = lanes.Country
 				item.Unsafe = lanes.Unsafe
 				item.OnwardUnvetted = lanes.OnwardUnvetted
+				item.Practice = lanes.Practice
 				item.Active = lanes.ActiveModelChannels[resolved] > 0
 			}
 		}

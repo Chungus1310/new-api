@@ -45,7 +45,9 @@ type ProviderConsentItem struct {
 	Country string `json:"country"`
 	Unsafe  bool   `json:"unsafe"`
 	// Unsafe only because inputs pass on to unvetted recipients; the seat country is safe.
-	OnwardUnvetted  bool     `json:"onward_unvetted"`
+	OnwardUnvetted bool `json:"onward_unvetted"`
+	// trains, retains or unknown (practice not known, counted as own use).
+	Practice        string   `json:"practice"`
 	TrainsOrRetains bool     `json:"trains_or_retains"`
 	ModelCount      int      `json:"model_count"`
 	Models          []string `json:"models"`
@@ -84,13 +86,15 @@ type ProviderConsentListData struct {
 }
 
 // ProviderOtherItem is a provider of the model that needs no consent. Reason is
-// safe_country, prompts_unknown_paid or no_own_purpose.
+// safe_country (own use or unknown practice from a safe country) or
+// no_own_purpose (prompts none).
 type ProviderOtherItem struct {
 	Label          string `json:"label"`
 	Country        string `json:"country"`
 	Unsafe         bool   `json:"unsafe"`
 	OnwardUnvetted bool   `json:"onward_unvetted"`
 	Active         bool   `json:"active"`
+	Practice       string `json:"practice"`
 	Reason         string `json:"reason"`
 }
 

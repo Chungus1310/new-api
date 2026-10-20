@@ -26,10 +26,8 @@ type groupDataPolicySnapshot struct {
 // groupRecipients is who receives inputs through one group. Internal only:
 // provider tags name our upstreams, which is a business secret.
 type groupRecipients struct {
-	// Channels whose provider trains on or retains prompts.
+	// Channels whose provider trains on, retains or may use prompts (practice unknown).
 	ownPurpose []dataRecipient
-	// Channels whose policy leaves prompts unknown or records none.
-	unknown []dataRecipient
 	// Channels whose provider neither trains on nor retains prompts.
 	other []dataRecipient
 	// True when some channel neither trains on nor retains prompts.
@@ -136,11 +134,8 @@ func mergeGroupDataPolicies(channels []*Channel) *groupDataPolicySnapshot {
 				r.countries = append(r.countries, current.SeatCountry)
 			}
 			switch {
-			case current.UsesInputsForOwnPurposes():
+			case policy.UsesInputsForOwnPurposes():
 				r.ownPurpose = append(r.ownPurpose, recipient)
-			case orUnknown(current.Prompts) == kitdto.DataPolicyUnknown:
-				r.unknown = append(r.unknown, recipient)
-				r.withoutOwnPurpose = true
 			default:
 				r.other = append(r.other, recipient)
 				r.withoutOwnPurpose = true
@@ -289,8 +284,8 @@ type ConsentScope struct {
 	// distributor would route.
 	Model           string
 	TrainsOrRetains bool
-	// An own-purpose provider sits in an unsafe third country (Art. 49 (1)(a)
-	// GDPR), or a :free model has a provider of unknown practice.
+	// An own-purpose provider, practice unknown included, sits in an unsafe
+	// third country (Art. 49 (1)(a) GDPR).
 	Required  bool
 	Providers []string
 	Countries []string
@@ -331,13 +326,6 @@ func consentScope(state *groupDataPolicySnapshot, modelName string, groups []str
 			seats[c] = true
 		}
 		scope.ServableWithoutOwnPurpose = scope.ServableWithoutOwnPurpose || recipients.withoutOwnPurpose
-		if !free {
-			continue
-		}
-		for _, r := range recipients.unknown {
-			scope.Required = true
-			addRecipient(r, providers, countries)
-		}
 	}
 	scope.Providers = slices.Sorted(maps.Keys(providers))
 	scope.Countries = slices.Sorted(maps.Keys(countries))
@@ -512,14 +500,14 @@ func orUnknown(value string) string {
 }
 
 // ChannelUsesInputsForOwnPurposes reports whether the channel's provider trains
-// on or retains prompts.
+// on or retains prompts or has no recorded practice.
 func ChannelUsesInputsForOwnPurposes(ch *Channel) bool {
 	if ch == nil || ch.Setting == nil || *ch.Setting == "" {
-		return false
+		return true
 	}
 	var setting kitdto.ChannelSettings
 	if err := common.UnmarshalJsonStr(*ch.Setting, &setting); err != nil {
-		return false
+		return true
 	}
 	return setting.DataPolicy.UsesInputsForOwnPurposes()
 }

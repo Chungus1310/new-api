@@ -80,9 +80,20 @@ func (p *ChannelDataPolicy) UnsafeThirdCountry() bool {
 	return !IsEEACountry(p.SeatCountry) && !IsEUAdequacyCountry(p.SeatCountry)
 }
 
-// UsesInputsForOwnPurposes reports a provider that trains on or retains prompts.
+// UsesInputsForOwnPurposes reports a provider that trains on or retains prompts,
+// or whose practice is unknown, which counts the same (EDPB 07/2020 Rn. 95 to
+// 101): only a recorded prompts "none" rules it out.
 func (p *ChannelDataPolicy) UsesInputsForOwnPurposes() bool {
-	return p != nil && (p.Prompts == DataPolicyPromptsTrains || p.Prompts == DataPolicyPromptsRetains)
+	return p == nil || p.Prompts != DataPolicyPromptsNone
+}
+
+// Practice is trains, retains or unknown for a provider that may use inputs
+// for its own purposes, none otherwise.
+func (p *ChannelDataPolicy) Practice() string {
+	if p == nil || p.Prompts == "" {
+		return DataPolicyUnknown
+	}
+	return p.Prompts
 }
 
 // Validate checks the stored values against the allowed vocabularies.
