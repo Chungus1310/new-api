@@ -392,6 +392,11 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				return nil
 			}
 			info.SetFirstResponseTime()
+			marked, err := s.markClientEvent(c, incoming)
+			if err != nil {
+				s.shutdown(websocket.CloseInternalServerErr, "")
+			}
+			incoming = marked
 			var event struct {
 				dto.ResponsesStreamResponse
 				StreamID string `json:"stream_id"`
@@ -659,6 +664,9 @@ func (s *responsesWSSession) startTargetReader(target *websocket.Conn) {
 				s.shutdown(code, "upstream connection closed")
 				return
 			}
+			if kind == websocket.TextMessage {
+				body = service.MarkGeneratedMedia(nil, body)
+			}
 			if writeErr := s.writeClient(kind, body); writeErr != nil {
 				s.shutdown(websocket.CloseInternalServerErr, "")
 				return
@@ -712,6 +720,23 @@ func (s *responsesWSSession) writeTarget(kind int, message []byte) error {
 		return err
 	}
 	return target.WriteMessage(kind, message)
+}
+
+// markClientEvent marks the generated media in one upstream event of the call
+// and sends the held link text it releases; the event itself is returned unsent,
+// since a terminal event is sent only after settlement.
+func (s *responsesWSSession) markClientEvent(c *gin.Context, incoming responsesWSMessage) (responsesWSMessage, error) {
+	if incoming.kind != websocket.TextMessage {
+		return incoming, nil
+	}
+	events := service.MarkGeneratedStreamEvent(c, incoming.body)
+	for _, event := range events[:len(events)-1] {
+		if err := s.writeClient(websocket.TextMessage, event.Data); err != nil {
+			return incoming, err
+		}
+	}
+	incoming.body = events[len(events)-1].Data
+	return incoming, nil
 }
 
 func (s *responsesWSSession) writeClient(kind int, message []byte) error {

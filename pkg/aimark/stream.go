@@ -21,11 +21,12 @@ type StreamEvent struct {
 }
 
 // StreamCarry holds back streamed text that may be the start of a markdown image
-// link until the link is complete, so RewriteBody sees it whole although the
-// provider spread it over several deltas. Held text moves into a later delta of
-// the same choice or block and is never dropped or reordered: anything else for
-// that choice, or the end of the stream, first releases it as a delta of its own.
-// OpenAI chat, Claude messages and Gemini events are carried; other payloads pass
+// link, or of a plain link once any media host is known, until the link is
+// complete, so RewriteBody sees it whole although the provider spread it over
+// several deltas. Held text moves into a later delta of the same choice or block
+// and is never dropped or reordered: anything else for that choice, or the end of
+// the stream, first releases it as a delta of its own. OpenAI chat, Claude
+// messages, Gemini and Responses text events are carried; other payloads pass
 // through unchanged. Not safe for concurrent use.
 type StreamCarry struct {
 	held  map[string]*heldLink
@@ -40,6 +41,8 @@ const (
 	phaseLabelClosed
 	phaseTarget
 	phaseBody
+	phaseScheme
+	phaseBareBody
 )
 
 type heldLink struct {
@@ -64,7 +67,8 @@ type textPart struct {
 // Process returns the events to send for one upstream event: releases of held
 // text first, then the event itself with its text adjusted.
 func (s *StreamCarry) Process(event []byte) []StreamEvent {
-	if len(s.order) == 0 && bytes.IndexByte(event, '!') < 0 {
+	bare := !mediaSources.empty()
+	if len(s.order) == 0 && bytes.IndexByte(event, '!') < 0 && (!bare || !bytes.Contains(event, []byte("ht"))) {
 		return []StreamEvent{{Data: event}}
 	}
 	parts := streamTextParts(event)
@@ -81,10 +85,10 @@ func (s *StreamCarry) Process(event []byte) []StreamEvent {
 	last := 0
 	for _, part := range parts {
 		held := s.held[part.key]
-		if held == nil && strings.IndexByte(part.text, '!') < 0 {
+		if held == nil && strings.IndexByte(part.text, '!') < 0 && (!bare || bareLinkStart(part.text) < 0) {
 			continue
 		}
-		emit := s.feed(part.key, part.text, part.release)
+		emit := s.feed(part.key, part.text, bare, part.release)
 		if part.final {
 			if held := s.held[part.key]; held != nil {
 				emit = append(emit, held.buf...)
@@ -137,18 +141,22 @@ func (s *StreamCarry) drop(key string) {
 	}
 }
 
-func (s *StreamCarry) hold(key string, release func([]byte) StreamEvent) *heldLink {
+func (s *StreamCarry) hold(key string, first byte, release func([]byte) StreamEvent) *heldLink {
 	if s.held == nil {
 		s.held = make(map[string]*heldLink)
 	}
-	held := &heldLink{buf: []byte{'!'}, phase: phaseBang, release: release}
+	held := &heldLink{buf: []byte{first}, phase: phaseBang, release: release}
+	if first == 'h' {
+		held.phase = phaseScheme
+	}
 	s.held[key] = held
 	s.order = append(s.order, key)
 	return held
 }
 
 // feed runs text through the held link of key and returns what may be sent now.
-func (s *StreamCarry) feed(key, text string, release func([]byte) StreamEvent) []byte {
+// Plain links are held only with bare set.
+func (s *StreamCarry) feed(key, text string, bare bool, release func([]byte) StreamEvent) []byte {
 	var emit []byte
 	held := s.held[key]
 	if held != nil {
@@ -157,13 +165,18 @@ func (s *StreamCarry) feed(key, text string, release func([]byte) StreamEvent) [
 	for i := 0; i < len(text); i++ {
 		if held == nil {
 			next := strings.IndexByte(text[i:], '!')
+			if bare {
+				if link := bareLinkStart(text[i:]); link >= 0 && (next < 0 || link < next) {
+					next = link
+				}
+			}
 			if next < 0 {
 				emit = append(emit, text[i:]...)
 				break
 			}
 			emit = append(emit, text[i:i+next]...)
 			i += next
-			held = s.hold(key, release)
+			held = s.hold(key, text[i], release)
 			continue
 		}
 		ch := text[i]
@@ -174,17 +187,29 @@ func (s *StreamCarry) feed(key, text string, release func([]byte) StreamEvent) [
 			s.drop(key)
 			held = nil
 		case stepBroken:
+			// The character that ended the hold may start the next one.
 			emit = append(emit, held.buf[:len(held.buf)-1]...)
 			s.drop(key)
 			held = nil
-			if ch == '!' {
-				held = s.hold(key, release)
-			} else {
-				emit = append(emit, ch)
-			}
+			i--
 		}
 	}
 	return emit
+}
+
+// bareLinkStart returns where text may start a plain link: an "http", or an "ht"
+// or "htt" that the next delta may continue. A lone trailing "h" is too common at
+// the end of a word to hold.
+func bareLinkStart(text string) int {
+	if link := strings.Index(text, "http"); link >= 0 {
+		return link
+	}
+	for _, partial := range []string{"htt", "ht"} {
+		if strings.HasSuffix(text, partial) {
+			return len(text) - len(partial)
+		}
+	}
+	return -1
 }
 
 type stepResult int
@@ -195,7 +220,10 @@ const (
 	stepBroken
 )
 
-var linkTargetPrefixes = []string{"http://", "https://", "data:image/"}
+var (
+	linkTargetPrefixes = []string{"http://", "https://", "data:image/"}
+	bareSchemes        = []string{"http://", "https://"}
+)
 
 func (h *heldLink) step(ch byte) stepResult {
 	h.n++
@@ -240,6 +268,20 @@ func (h *heldLink) step(ch byte) stepResult {
 		case ch == ')':
 			return stepComplete
 		case ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '"' || h.n > h.limit:
+			return stepBroken
+		}
+	case phaseScheme:
+		target := string(h.buf)
+		if slices.Contains(bareSchemes, target) {
+			h.phase, h.n = phaseBareBody, 0
+			return stepOpen
+		}
+		if !slices.ContainsFunc(bareSchemes, func(scheme string) bool { return strings.HasPrefix(scheme, target) }) {
+			return stepBroken
+		}
+	case phaseBareBody:
+		// The link ends at the first character a URL in prose cannot hold.
+		if strings.IndexByte(" \t\n\r\"'`<>()[]{}", ch) >= 0 || h.n > maxHeldLink {
 			return stepBroken
 		}
 	}
@@ -299,6 +341,7 @@ func streamTextParts(event []byte) []textPart {
 
 	var parts []textPart
 	claudeText := stringAt("type") == "content_block_delta" && stringAt("delta", "type") == "text_delta"
+	responsesText := stringAt("type") == "response.output_text.delta"
 	for _, leaf := range leaves {
 		text, isString := leaf.value.(string)
 		if !isString {
@@ -330,6 +373,18 @@ func streamTextParts(event []byte) []textPart {
 			parts = append(parts, textPart{
 				key: "claude:" + string(index), start: leaf.start, end: leaf.end, text: text,
 				release: claudeRelease(index),
+			})
+		case responsesText && len(path) == 1 && path[0] == "delta":
+			meta := map[string][]byte{}
+			for _, name := range responsesDeltaFields {
+				if raw := rawAt(name); raw != nil {
+					meta[name] = raw
+				}
+			}
+			parts = append(parts, textPart{
+				key:   "responses:" + string(meta["item_id"]) + ":" + string(meta["content_index"]),
+				start: leaf.start, end: leaf.end, text: text,
+				release: responsesRelease(meta),
 			})
 		case len(path) == 6 && path[0] == "candidates" && path[2] == "content" && path[3] == "parts" && path[5] == "text":
 			index := rawAt("candidates", path[1], "index")
@@ -382,6 +437,26 @@ func claudeRelease(index []byte) func([]byte) StreamEvent {
 		out = append(out, encoded...)
 		out = append(out, `}}`...)
 		return StreamEvent{Type: "content_block_delta", Data: out}
+	}
+}
+
+// Fields a released Responses text delta repeats from the delta it was held from.
+var responsesDeltaFields = []string{"sequence_number", "item_id", "output_index", "content_index"}
+
+func responsesRelease(meta map[string][]byte) func([]byte) StreamEvent {
+	return func(text []byte) StreamEvent {
+		encoded, _ := marshalText(text)
+		out := []byte(`{"type":"response.output_text.delta"`)
+		for _, name := range responsesDeltaFields {
+			if raw, ok := meta[name]; ok {
+				out = append(out, `,"`+name+`":`...)
+				out = append(out, raw...)
+			}
+		}
+		out = append(out, `,"delta":`...)
+		out = append(out, encoded...)
+		out = append(out, '}')
+		return StreamEvent{Type: "response.output_text.delta", Data: out}
 	}
 }
 

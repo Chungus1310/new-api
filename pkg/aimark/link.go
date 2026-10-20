@@ -2,11 +2,15 @@ package aimark
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 )
 
 // LinkRewriter, when set, returns a URL that serves the image behind an http(s) link
@@ -16,7 +20,15 @@ var LinkRewriter func(rawURL string) (string, bool)
 var (
 	linkTriggers = [][]byte{
 		[]byte(`"image_url"`), []byte(`"url"`), []byte("](http"), []byte(`"fileUri"`), []byte(`"file_uri"`),
+		[]byte(`"image_generation_call"`), []byte("http"),
 	}
+	// Responses image_generation_call items whose result is a link instead of base64.
+	imageCallPattern       = regexp.MustCompile(`\{[^{}]*"type"\s*:\s*"image_generation_call"[^{}]*\}`)
+	imageCallResultPattern = regexp.MustCompile(`"result"\s*:\s*("(?:[^"\\]|\\.)*")`)
+	// Text values of chat, Claude, Gemini and Responses payloads, where a model
+	// writes links as plain text.
+	textFieldPattern = regexp.MustCompile(`"(?:content|text|delta|output_text)"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+	bareURLPattern   = regexp.MustCompile(`https?:(?:\\/|/)(?:\\/|/)(?:[^\s"\\<>()\[\]{}'\x60]|\\/|\\u[0-9a-fA-F]{4})+`)
 	// Chat completion image parts, as an object or as a bare string.
 	imageURLPattern = regexp.MustCompile(`"image_url"\s*:\s*(?:\{\s*"url"\s*:\s*)?("(?:[^"\\]|\\.)*")`)
 	// Claude image blocks with a url source.
@@ -41,9 +53,90 @@ func RewriteLink(rawURL string) string {
 		return rawURL
 	}
 	if rewritten, ok := LinkRewriter(rawURL); ok {
+		mediaSources.learn(rawURL)
 		return rewritten
 	}
 	return rawURL
+}
+
+const (
+	mediaSourceTTL        = 7 * 24 * time.Hour
+	maxMediaSourceHosts   = 4096
+	maxMediaSourceLinks   = 16384
+	maxBareLinkCandidates = 64
+)
+
+// Files a bare link may name to count as generated media of a known host.
+var bareMediaExtensions = []string{".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov"}
+
+// mediaSourceSet remembers the hosts and links the gateway wrapped as generated
+// media in structured output (Markdown images, image parts, data[].url, task
+// results). A bare link in text is wrapped only when it names one of those links,
+// or a media file on one of those hosts; any other link stays as it is.
+type mediaSourceSet struct {
+	mu    sync.Mutex
+	hosts map[string]time.Time
+	links map[[sha256.Size]byte]time.Time
+}
+
+var mediaSources = &mediaSourceSet{}
+
+func (m *mediaSourceSet) learn(rawURL string) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" {
+		return
+	}
+	expires := time.Now().Add(mediaSourceTTL)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hosts == nil {
+		m.hosts = make(map[string]time.Time)
+		m.links = make(map[[sha256.Size]byte]time.Time)
+	}
+	putExpiring(m.hosts, strings.ToLower(parsed.Hostname()), expires, maxMediaSourceHosts)
+	putExpiring(m.links, sha256.Sum256([]byte(rawURL)), expires, maxMediaSourceLinks)
+}
+
+func putExpiring[K comparable](entries map[K]time.Time, key K, expires time.Time, limit int) {
+	if _, ok := entries[key]; !ok && len(entries) >= limit {
+		now := time.Now()
+		for k, at := range entries {
+			if now.After(at) {
+				delete(entries, k)
+			}
+		}
+		for k := range entries {
+			if len(entries) < limit {
+				break
+			}
+			delete(entries, k)
+		}
+	}
+	entries[key] = expires
+}
+
+func (m *mediaSourceSet) empty() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.hosts) == 0
+}
+
+func (m *mediaSourceSet) allows(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if at, ok := m.links[sha256.Sum256([]byte(rawURL))]; ok && now.Before(at) {
+		return true
+	}
+	at, ok := m.hosts[strings.ToLower(parsed.Hostname())]
+	if !ok || now.After(at) {
+		return false
+	}
+	return slices.Contains(bareMediaExtensions, strings.ToLower(path.Ext(parsed.Path)))
 }
 
 // RewriteLinksIn swaps every JSON string in body that equals one of rawURLs for its
@@ -63,6 +156,42 @@ func RewriteLinksIn(body []byte, rawURLs []string) []byte {
 		}
 	}
 	return body
+}
+
+// Key fragments under which a task's raw data echoes what the caller sent.
+var taskRequestKeyParts = []string{"input", "request", "param", "callback", "reference", "mask", "init", "prompt", "source"}
+
+// TaskMediaLinks lists the http(s) links in a task's raw upstream data that name a
+// media file the gateway can mark, such as further outputs, covers or last frames
+// next to the result URL. Values under request-side keys stay out, since a
+// provider may echo the caller's own input images there.
+func TaskMediaLinks(data []byte) []string {
+	if !bytes.Contains(data, []byte("http")) {
+		return nil
+	}
+	leaves, ok := jsonLeaves(data)
+	if !ok {
+		return nil
+	}
+	var links []string
+	for _, leaf := range leaves {
+		raw, isString := leaf.value.(string)
+		if !isString || !isHTTPURL(raw) || slices.Contains(links, raw) {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || !slices.Contains(bareMediaExtensions, strings.ToLower(path.Ext(parsed.Path))) {
+			continue
+		}
+		requestSide := slices.ContainsFunc(leaf.path, func(key string) bool {
+			key = strings.ToLower(key)
+			return slices.ContainsFunc(taskRequestKeyParts, func(part string) bool { return strings.Contains(key, part) })
+		})
+		if !requestSide {
+			links = append(links, raw)
+		}
+	}
+	return links
 }
 
 func quotedJSONForms(s string) [][]byte {
@@ -159,7 +288,59 @@ func rewriteLinks(body []byte, known KnownLink) []byte {
 	if bytes.Contains(body, []byte(`"url"`)) && dataArrayPattern.Match(body) {
 		body = rewriteImageItemURLs(body, known)
 	}
+	if bytes.Contains(body, []byte(`"image_generation_call"`)) {
+		body = imageCallPattern.ReplaceAllFunc(body, func(m []byte) []byte {
+			loc := imageCallResultPattern.FindSubmatchIndex(m)
+			if loc == nil {
+				return m
+			}
+			out := append([]byte(nil), m[:loc[0]]...)
+			out = append(out, rewriteQuotedLink(imageCallResultPattern, m[loc[0]:loc[1]], known)...)
+			return append(out, m[loc[1]:]...)
+		})
+	}
+	if bytes.Contains(body, []byte("http")) && !mediaSources.empty() {
+		body = rewriteBareLinks(body, known)
+	}
 	return body
+}
+
+// rewriteBareLinks wraps plain-text links in text values that mediaSources allows.
+// It runs last, so links an earlier pattern wrapped already point at the gateway
+// and are left alone.
+func rewriteBareLinks(body []byte, known KnownLink) []byte {
+	return textFieldPattern.ReplaceAllFunc(body, func(field []byte) []byte {
+		sub := textFieldPattern.FindSubmatchIndex(field)
+		value := field[sub[2]:sub[3]]
+		if !bytes.Contains(value, []byte("http")) {
+			return field
+		}
+		candidates := 0
+		rewritten := bareURLPattern.ReplaceAllFunc(value, func(m []byte) []byte {
+			candidates++
+			if candidates > maxBareLinkCandidates {
+				return m
+			}
+			link := bytes.TrimRight(m, ".,;:!?")
+			quoted := append(append([]byte{'"'}, link...), '"')
+			var raw string
+			if json.Unmarshal(quoted, &raw) != nil || !mediaSources.allows(raw) {
+				return m
+			}
+			encoded, ok := rewriteJSONString(quoted, known)
+			if !ok {
+				return m
+			}
+			out := append([]byte(nil), encoded[1:len(encoded)-1]...)
+			return append(out, m[len(link):]...)
+		})
+		if bytes.Equal(rewritten, value) {
+			return field
+		}
+		out := append([]byte(nil), field[:sub[2]]...)
+		out = append(out, rewritten...)
+		return append(out, field[sub[3]:]...)
+	})
 }
 
 // isGeminiFileHandle reports a Files API URI, a handle clients pass back to Gemini

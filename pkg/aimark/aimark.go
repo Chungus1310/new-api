@@ -202,12 +202,13 @@ func MarkBase64(s string) (string, bool) {
 var (
 	dataURLPattern = regexp.MustCompile(`data:image/(?:png|jpe?g|webp);base64,([A-Za-z0-9+/]+={0,2})`)
 	// JSON string fields that carry raw base64 images across the providers we relay
-	// (OpenAI images and Responses, Gemini inlineData and Imagen, Claude image blocks, Runware).
-	b64FieldPattern = regexp.MustCompile(`"(b64_json|result|bytesBase64Encoded|imageBase64Data|data|partial_image_b64)"(\s*:\s*")([A-Za-z0-9+/]{256,}={0,2})"`)
+	// (OpenAI images and Responses, Gemini inlineData and Imagen, Claude image blocks, Runware,
+	// AI Horde generations).
+	b64FieldPattern = regexp.MustCompile(`"(b64_json|result|bytesBase64Encoded|imageBase64Data|data|partial_image_b64|img)"(\s*:\s*")([A-Za-z0-9+/]{256,}={0,2})"`)
 	triggers        = [][]byte{
 		[]byte("data:image/"), []byte(`"b64_json"`), []byte(`"result"`), []byte(`"bytesBase64Encoded"`),
 		[]byte(`"imageBase64Data"`), []byte(`"inlineData"`), []byte(`"inline_data"`), []byte(`"partial_image_b64"`),
-		[]byte(`"media_type"`),
+		[]byte(`"media_type"`), []byte(`"img"`),
 	}
 )
 
@@ -227,6 +228,13 @@ func RewriteBodyKnown(body []byte, links bool, known KnownLink) []byte {
 		body = rewriteLinks(body, known)
 	}
 	return body
+}
+
+// MarkEmbedded marks every image embedded in body as a data URL or base64 JSON
+// field without the trigger check RewriteBody applies first, for bodies such as
+// raw task data where the base64 sits under a generic key.
+func MarkEmbedded(body []byte) []byte {
+	return rewriteEmbedded(body)
 }
 
 func rewriteEmbedded(body []byte) []byte {

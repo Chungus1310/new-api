@@ -136,9 +136,11 @@ func MarkGeneratedMediaLink(c *gin.Context, rawURL string) string {
 	return aimark.RewriteLink(rawURL)
 }
 
-// MarkGeneratedMediaLinksIn wraps every JSON string in body that equals one of
-// rawURLs, leaving the rest of the body untouched.
-func MarkGeneratedMediaLinksIn(c *gin.Context, body []byte, rawURLs []string) []byte {
+// MarkGeneratedTaskResponse marks the base64 media embedded in a task fetch body
+// and wraps every JSON string in it that equals one of rawURLs, leaving the rest
+// of the body untouched.
+func MarkGeneratedTaskResponse(c *gin.Context, body []byte, rawURLs []string) []byte {
+	body = aimark.MarkEmbedded(body)
 	if !wrapMediaLinks(c) {
 		return body
 	}

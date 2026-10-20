@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/aimark"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -515,7 +517,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 	defer func() {
 		if taskResp == nil {
-			respBody = service.MarkGeneratedMediaLinksIn(c, respBody, originTask.GetResultURLs())
+			links := slices.Concat(originTask.GetResultURLs(), aimark.TaskMediaLinks(originTask.Data))
+			respBody = service.MarkGeneratedTaskResponse(c, respBody, links)
 		}
 	}()
 

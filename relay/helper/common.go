@@ -107,8 +107,7 @@ func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data st
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", service.MarkGeneratedMediaString(c, data))})
+	RenderMarkedEvent(c, resp.Type, []byte(data))
 	return FlushWriter(c)
 }
 
