@@ -583,6 +583,11 @@ func Register(c fuego.ContextWithBody[dto.RegisterRequest]) (dto.MessageResponse
 	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		return dto.FailMsg("User registration failed or user ID retrieval failed")
 	}
+	if terms := (model.TermsShown{Version: strings.TrimSpace(req.TermsVersion), Locale: strings.TrimSpace(req.TermsLocale), Text: strings.TrimSpace(req.TermsText)}); terms.Valid() {
+		if err := model.RecordTermsAcceptance(insertedUser.Id, model.TermsSourceRegister, terms); err != nil {
+			common.SysError(common.LogText("failed to record terms acceptance for user %d: %s", insertedUser.Id, err.Error()))
+		}
+	}
 	if constant.GenerateDefaultToken {
 		key, err := common.GenerateKey()
 		if err != nil {

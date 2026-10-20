@@ -27,6 +27,11 @@ func StartFreeConsentPruner() {
 			} else if n > 0 {
 				common.SysLog(fmt.Sprintf("pruned %d provider consent records past the proof period", n))
 			}
+			if n, err := model.PruneTermsAcceptances(time.Now()); err != nil {
+				common.SysError("terms acceptance prune failed: " + err.Error())
+			} else if n > 0 {
+				common.SysLog(fmt.Sprintf("pruned %d terms acceptance records past the proof period", n))
+			}
 			n, err := model.PruneFreeConsents(time.Now())
 			if err != nil {
 				common.SysError("free consent prune failed: " + err.Error())

@@ -53,6 +53,9 @@ type GenerateOAuthCodeParams struct {
 	CustomerType string `query:"customer_type" description:"Declared customer type for an account created by this login: consumer or business"`
 	Scope        string `query:"scope" description:"Step-up scope a verify intent proves (requires Authorization header)"`
 	Context      string `query:"context" description:"JSON object with the step-up context, for scopes that bind one"`
+	TermsVersion string `query:"terms_version" description:"Terms of use version the signup page showed (YYYY-MM-DD), recorded as accepted on an account this login creates"`
+	TermsLocale  string `query:"terms_locale" description:"Locale of the terms notice shown"`
+	TermsText    string `query:"terms_text" description:"The terms notice exactly as shown"`
 }
 
 type WeChatBindParams struct {

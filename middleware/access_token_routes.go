@@ -359,6 +359,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/user/self/provider-consents":    accessTokenSessionRule,
 	"POST /api/user/self/provider-consents":   accessTokenSessionRule,
 	"DELETE /api/user/self/provider-consents": accessTokenSessionRule,
+	"GET /api/user/self/terms-acceptance":     accessTokenSessionRule,
+	"POST /api/user/self/terms-acceptance":    accessTokenSessionRule,
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,

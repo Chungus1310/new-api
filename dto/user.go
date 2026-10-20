@@ -10,6 +10,10 @@ type RegisterRequest struct {
 	// "consumer" or "business"; optional so older clients still register and are
 	// asked later.
 	CustomerType string `json:"customer_type,omitempty" validate:"omitempty,oneof=consumer business"`
+	// The terms notice the form showed; recorded as the accepted terms version.
+	TermsVersion string `json:"terms_version,omitempty" validate:"max=16"`
+	TermsLocale  string `json:"terms_locale,omitempty" validate:"max=16"`
+	TermsText    string `json:"terms_text,omitempty" validate:"max=20000"`
 }
 
 // LoginRequest is the request body for POST /api/user/login.

@@ -193,6 +193,8 @@ func SetApiRouter(router *gin.Engine, engine *fuego.Engine) {
 		dto.Get(self, "/self/provider-consents", controller.GetProviderConsents)
 		dto.PostB(self, "/self/provider-consents", controller.GrantProviderConsents)
 		dto.DeleteB(self, "/self/provider-consents", controller.RevokeProviderConsent)
+		dto.Get(self, "/self/terms-acceptance", controller.GetTermsAcceptance)
+		dto.PostB(self, "/self/terms-acceptance", controller.AcceptTerms)
 		dto.Get(self, "/self/own-purpose-objection", controller.GetOwnPurposeObjection)
 		dto.PutB(self, "/self/own-purpose-objection", controller.SetOwnPurposeObjection)
 		dto.Delete(selfCred, "/self", controller.DeleteSelf)

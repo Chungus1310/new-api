@@ -30,14 +30,17 @@ type oauthStateRequest struct {
 	Intent   string `json:"intent"`
 	Aff      string `json:"aff,omitempty"`
 	// Only for a login that may create the account; ignored for existing users.
-	CustomerType string          `json:"customer_type,omitempty"`
-	Scope        string          `json:"scope,omitempty"`
-	Context      json.RawMessage `json:"context,omitempty"`
+	CustomerType string `json:"customer_type,omitempty"`
+	// The terms notice the signup page showed, recorded on an account this login creates.
+	Terms   model.TermsShown `json:"terms"`
+	Scope   string           `json:"scope,omitempty"`
+	Context json.RawMessage  `json:"context,omitempty"`
 }
 
 type oauthFlowPayload struct {
 	AffiliateCode   string                         `json:"affiliate_code,omitempty"`
 	CustomerType    string                         `json:"customer_type,omitempty"`
+	Terms           model.TermsShown               `json:"terms"`
 	Verification    *service.OAuthVerificationFlow `json:"verification,omitempty"`
 	Telegram        *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
 	SessionIdentity *service.AuthIdentity          `json:"session_identity,omitempty"`
@@ -93,6 +96,7 @@ func GenerateOAuthCodeQuery(c fuego.ContextWithParams[dto.GenerateOAuthCodeParam
 		return dto.Fail[string]("The redirect URI is not in the list of allowed origins")
 	}
 	request := oauthStateRequest{Provider: p.Provider, Intent: intent, Aff: p.Aff, CustomerType: p.CustomerType, Scope: strings.TrimSpace(p.Scope)}
+	request.Terms = model.TermsShown{Version: strings.TrimSpace(p.TermsVersion), Locale: strings.TrimSpace(p.TermsLocale), Text: strings.TrimSpace(p.TermsText)}
 	if p.Context != "" {
 		request.Context = json.RawMessage(p.Context)
 	}
@@ -117,6 +121,7 @@ func generateOAuthState(c *gin.Context, request oauthStateRequest, redirectURI s
 		len(request.Aff) > 32 ||
 		(request.Intent != model.AuthFlowIntentLogin && request.Aff != "") ||
 		(request.CustomerType != "" && (request.Intent != model.AuthFlowIntentLogin || !model.IsValidCustomerType(request.CustomerType))) ||
+		(request.Terms != model.TermsShown{} && (request.Intent != model.AuthFlowIntentLogin || !request.Terms.Valid())) ||
 		(request.Intent != model.AuthFlowIntentVerify && (request.Scope != "" || len(request.Context) != 0)) {
 		common.ApiError(c, common.NewMessage("Invalid parameters"))
 		return "", time.Time{}, oauthFlowPayload{}, false
@@ -124,7 +129,7 @@ func generateOAuthState(c *gin.Context, request oauthStateRequest, redirectURI s
 
 	userID := 0
 	sessionID := ""
-	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff, CustomerType: request.CustomerType, RedirectURI: redirectURI}
+	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff, CustomerType: request.CustomerType, Terms: request.Terms, RedirectURI: redirectURI}
 	bindingStarted := false
 	if request.Provider == "telegram" {
 		telegramFlow, err := oauth.NewTelegramOAuthFlow()
@@ -447,7 +452,7 @@ func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.
 		writeSecurityOperationError(c, err)
 		return
 	}
-	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode, payload.CustomerType)
+	user, migration, err := findOrCreateOAuthUser(c, provider, oauthUser, token, payload.AffiliateCode, payload.CustomerType, payload.Terms)
 	if err != nil {
 		var msg string
 		switch err.(type) {
@@ -623,7 +628,7 @@ func gitHubAccountTooNew(oauthUser *oauth.OAuthUser) bool {
 // findOrCreateOAuthUser finds the existing user or creates a new one. For a
 // legacy GitHub binding that still waits for the login verification, it also
 // returns the rewrite to carry into the challenge.
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string, customerType string) (*model.User, *service.LegacyGitHubMigration, error) {
+func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, affiliateCode string, customerType string, terms model.TermsShown) (*model.User, *service.LegacyGitHubMigration, error) {
 	user := &model.User{}
 	if provider.ProviderUserIDColumn() == "telegram_id" {
 		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID)
@@ -821,6 +826,11 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks
 		user.FinalizeOAuthUserCreation(inviterId)
+	}
+	if terms.Valid() {
+		if err := model.RecordTermsAcceptance(user.Id, model.TermsSourceOAuth, terms); err != nil {
+			common.SysError(common.LogText("failed to record terms acceptance for user %d: %s", user.Id, err.Error()))
+		}
 	}
 
 	return user, nil, nil

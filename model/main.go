@@ -407,6 +407,7 @@ func migrateDB() error {
 		&OwnPurposeObjection{},
 		&ProviderAlias{},
 		&ProviderConsent{},
+		&TermsAcceptance{},
 	)
 	if err != nil {
 		return err
