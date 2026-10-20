@@ -486,3 +486,54 @@ func ModelConsentProviders(userId int, guestId string, modelName string) (map[st
 	}
 	return covered, nil
 }
+
+// MissingConsentProvider is a provider the subject still needs to consent to,
+// by its public names.
+type MissingConsentProvider struct {
+	Alias   string
+	Label   string
+	Country string
+}
+
+// MissingConsentProviders lists the providers of a model that neither an
+// active provider consent nor a model consent covers, in the given order.
+func MissingConsentProviders(userId int, guestId string, modelName string, providers []string) ([]MissingConsentProvider, error) {
+	subject := freeConsentSubject(userId, guestId)
+	entry, ok := loadFreeConsentEntry(subject)
+	if !ok {
+		var err error
+		if entry, err = buildFreeConsentEntry(userId, guestId); err != nil {
+			return nil, err
+		}
+		freeConsentCache.Store(subject, entry)
+	}
+	aliases := ProviderAliasesFor(providers)
+	labels := map[string]string{}
+	for _, p := range ConsentProviders() {
+		labels[p.Alias] = p.Label
+	}
+	stored := entry.models[modelName]
+	var out []MissingConsentProvider
+	for _, p := range providers {
+		if stored[p] {
+			continue
+		}
+		alias, ok := aliases[p]
+		if !ok {
+			continue
+		}
+		if entry.aliases[alias.Alias] {
+			continue
+		}
+		label := labels[alias.Alias]
+		if label == "" {
+			label = alias.Alias
+		}
+		country := alias.Country
+		if country == unknownAliasCountry {
+			country = ""
+		}
+		out = append(out, MissingConsentProvider{Alias: alias.Alias, Label: label, Country: country})
+	}
+	return out, nil
+}

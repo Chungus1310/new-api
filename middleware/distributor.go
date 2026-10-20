@@ -67,8 +67,8 @@ func Distribute() func(c *gin.Context) {
 		if !tokenModelAllowed(c, modelRequest.Model) {
 			return
 		}
-		if message, code := ConsentRefusal(c, modelRequest.Model); message != "" {
-			abortWithOpenAiMessage(c, http.StatusForbidden, message, code)
+		if refusal := ConsentRefusal(c, modelRequest.Model); refusal != nil {
+			abortWithOpenAiError(c, http.StatusForbidden, refusal.Message, refusal.Code, refusal.Param)
 			return
 		}
 
@@ -964,34 +964,79 @@ func tokenModelAllowed(c *gin.Context, requestedModel string) bool {
 	return true
 }
 
-// ConsentRefusal is the 403 message and code for a request the consent rules
-// refuse, empty when it may pass. An objection is honoured on every attempt of
-// the request, before any pin or affinity and whatever the switch says. A
-// consent covers the provider set it was given for, so a provider added later
-// asks again. A missing one is refused while ConsentEnforcementEnabled is on,
-// for an account with consent_enforced, or for a model in ConsentEnforcedModels.
-// The guest key's owner is delegated: the chat BFF checks each guest's own
-// consent before relaying.
-func ConsentRefusal(c *gin.Context, requestedModel string) (string, types.ErrorCode) {
+// ConsentRefusal is the 403 for a request the consent rules refuse, nil when
+// it may pass. An objection is honoured on every attempt of the request, before
+// any pin or affinity and whatever the switch says. A missing consent is
+// refused while ConsentEnforcementEnabled is on, for an account with
+// consent_enforced, or for a model in ConsentEnforcedModels; the message names
+// the providers still missing and Param carries their aliases. The guest key's
+// owner is delegated: the chat BFF checks each guest's own consent.
+func ConsentRefusal(c *gin.Context, requestedModel string) *ConsentRefusalError {
 	userSetting, _ := common.GetContextKeyType[hosttypes.UserSetting](c, constant.ContextKeyUserSetting)
 	enforced := common.ConsentEnforcementEnabled || userSetting.ConsentEnforced
 	if userSetting.OwnPurposeObjection {
 		service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterOwnPurposeObjection})
 	} else if !enforced && len(common.ConsentEnforcedModels()) == 0 {
-		return "", ""
+		return nil
 	}
 	scope := model.ConsentScopeFor(requestedModel)
 	enforced = enforced || common.ConsentEnforcedModel(scope.Model, requestedModel)
 	if enforced && scope.Required && !userSetting.FreeConsentDelegated {
-		switch model.ConsentAccessFor(c.GetInt("id"), "", scope.Model, scope.Providers) {
+		userId := c.GetInt("id")
+		switch model.ConsentAccessFor(userId, "", scope.Model, scope.Providers) {
 		case model.ConsentAccessBusiness:
-			return i18n.T(c, i18n.MsgDistributorConsentBusiness), types.ErrorCode("free_models_business")
+			return &ConsentRefusalError{Message: i18n.T(c, i18n.MsgDistributorConsentBusiness), Code: "consent_business"}
 		case model.ConsentAccessNeedsConsent:
-			return i18n.T(c, i18n.MsgDistributorConsentRequired, map[string]any{"Model": scope.Model, "Url": system_setting.UserLinkBase() + "/consents?model=" + url.QueryEscape(scope.Model)}), types.ErrorCode("free_consent_required")
+			return consentRequiredError(c, userId, scope)
 		}
 	}
 	if userSetting.OwnPurposeObjection && requestedModel != "" && scope.TrainsOrRetains && !scope.ServableWithoutOwnPurpose {
-		return i18n.T(c, i18n.MsgDistributorOwnPurposeObjected, map[string]any{"Model": requestedModel}), types.ErrorCode("own_purpose_objected")
+		return &ConsentRefusalError{Message: i18n.T(c, i18n.MsgDistributorOwnPurposeObjected, map[string]any{"Model": requestedModel}), Code: "own_purpose_objected"}
 	}
-	return "", ""
+	return nil
+}
+
+type ConsentRefusalError struct {
+	Message string
+	Code    string
+	Param   string
+}
+
+// consentRequiredListLimit caps the providers a refusal names.
+const consentRequiredListLimit = 5
+
+func consentRequiredError(c *gin.Context, userId int, scope model.ConsentScope) *ConsentRefusalError {
+	link := system_setting.UserLinkBase() + "/consents?model=" + url.QueryEscape(scope.Model)
+	missing, err := model.MissingConsentProviders(userId, "", scope.Model, scope.Providers)
+	if err != nil || len(missing) == 0 {
+		return &ConsentRefusalError{Message: i18n.T(c, i18n.MsgDistributorConsentRequiredGeneric, map[string]any{"Model": scope.Model, "Url": link}), Code: "consent_required"}
+	}
+	lang := i18n.StatedLang(c)
+	if lang == "" {
+		lang = common.DefaultLanguage
+	}
+	names := make([]string, 0, consentRequiredListLimit)
+	aliases := make([]string, 0, len(missing))
+	for i, p := range missing {
+		aliases = append(aliases, p.Alias)
+		if i >= consentRequiredListLimit {
+			continue
+		}
+		if p.Country == "" {
+			names = append(names, p.Label)
+			continue
+		}
+		// A label already told apart by its country code gets the country name instead.
+		label := strings.TrimSuffix(p.Label, " ("+p.Country+")")
+		names = append(names, i18n.T(c, i18n.MsgDistributorConsentProvider, map[string]any{"Label": label, "Country": i18n.CountryName(lang, p.Country)}))
+	}
+	list := strings.Join(names, i18n.T(c, i18n.MsgDistributorConsentProviderSeparator))
+	if extra := len(missing) - len(names); extra > 0 {
+		list += i18n.T(c, i18n.MsgDistributorConsentMore, map[string]any{"Count": extra})
+	}
+	return &ConsentRefusalError{
+		Message: i18n.T(c, i18n.MsgDistributorConsentRequired, map[string]any{"Model": scope.Model, "Providers": list, "Url": link}),
+		Code:    "consent_required",
+		Param:   strings.Join(aliases, ","),
+	}
 }

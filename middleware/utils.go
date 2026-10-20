@@ -16,6 +16,12 @@ func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code
 	if len(code) > 0 {
 		codeStr = string(code[0])
 	}
+	abortWithOpenAiError(c, statusCode, message, codeStr, "")
+}
+
+// abortWithOpenAiError is abortWithOpenAiMessage with the OpenAI param field,
+// sent only when set.
+func abortWithOpenAiError(c *gin.Context, statusCode int, message string, codeStr string, param string) {
 	userId := c.GetInt("id")
 	_, preparedPluginRoute := c.Get(pluginruntime.ContextKeyRouteRequest)
 	if !preparedPluginRoute || !RespondTaskPluginError(c, &dto.TaskError{
@@ -23,13 +29,15 @@ func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code
 		Message:    message,
 		StatusCode: statusCode,
 	}) {
-		c.JSON(statusCode, gin.H{
-			"error": gin.H{
-				"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
-				"type":    "new_api_error",
-				"code":    codeStr,
-			},
-		})
+		body := gin.H{
+			"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
+			"type":    "new_api_error",
+			"code":    codeStr,
+		}
+		if param != "" {
+			body["param"] = param
+		}
+		c.JSON(statusCode, gin.H{"error": body})
 	}
 	c.Abort()
 	logger.LogError(c.Request.Context(), common.LogText("user %d | %s", userId, message))

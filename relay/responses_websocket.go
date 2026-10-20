@@ -921,8 +921,8 @@ func checkResponsesWSModelAccess(c *gin.Context, modelName string) *types.NewAPI
 			return types.NewErrorWithStatusCode(fmt.Errorf("token is not allowed to use model %s", modelName), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 		}
 	}
-	if message, code := middleware.ConsentRefusal(c, modelName); message != "" {
-		return types.NewErrorWithStatusCode(errors.New(message), code, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	if refusal := middleware.ConsentRefusal(c, modelName); refusal != nil {
+		return types.WithOpenAIError(types.OpenAIError{Message: refusal.Message, Type: "new_api_error", Param: refusal.Param, Code: refusal.Code}, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
 	return nil
 }
