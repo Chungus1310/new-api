@@ -32,7 +32,7 @@ const midjourneyImageMaxBytes = 32 << 20
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
-	midjourneyTask := model.GetByOnlyMJId(taskId)
+	midjourneyTask := model.GetByMJId(c.GetInt("id"), taskId)
 	if midjourneyTask == nil {
 		c.JSON(400, gin.H{
 			"error": "midjourney_task_not_found",

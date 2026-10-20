@@ -298,7 +298,7 @@ func SetRelayRouter(router *gin.Engine, engine *fuego.Engine) {
 }
 
 func registerMjRouterGroup(mj *dto.Router, relayMjRouter *gin.RouterGroup) {
-	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
+	relayMjRouter.GET("/image/:id", middleware.TokenAuth(), relay.RelayMidjourneyImage)
 	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
 	{
 		mj.GinPost("/submit/action", controller.RelayMidjourney, dto.GinResp[dto.MidjourneyResponse]())

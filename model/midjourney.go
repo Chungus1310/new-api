@@ -117,16 +117,6 @@ func HasUnfinishedMidjourneyTasks() bool {
 	return err == nil && id != 0
 }
 
-func GetByOnlyMJId(mjId string) *Midjourney {
-	var mj *Midjourney
-	var err error
-	err = DB.Where("mj_id = ?", mjId).First(&mj).Error
-	if err != nil {
-		return nil
-	}
-	return mj
-}
-
 func GetByMJId(userId int, mjId string) *Midjourney {
 	var mj *Midjourney
 	var err error
